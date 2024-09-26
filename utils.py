@@ -70,6 +70,6 @@ def start_ollama_server():
         stdout=subprocess.DEVNULL,  # Hide standard output
         stderr=subprocess.DEVNULL   # Hide standard error
     )
-    time.sleep(1)  # Give some time for the server to start
+    time.sleep(3)  # Give some time for the server to start
     return process
 # --------------------------------------
