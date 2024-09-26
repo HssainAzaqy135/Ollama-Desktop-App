@@ -2,6 +2,9 @@
 import ollama
 import json
 import time
+import subprocess
+
+
 # Backend classes and methods for the desktop app
 class Chat_object:
     def __init__(self,title:str):
@@ -58,4 +61,15 @@ def get_response(curr_Chat:Chat_object,model:str):
 # --------------------------------------
 def get_chat_title():
     return input('Choose a chat title: ').strip()
+# --------------------------------------
+# Start Ollama server automatically and hide output
+def start_ollama_server():
+    # Run the ollama serve command in a background process and suppress output
+    process = subprocess.Popen(
+        ["ollama", "serve"], 
+        stdout=subprocess.DEVNULL,  # Hide standard output
+        stderr=subprocess.DEVNULL   # Hide standard error
+    )
+    time.sleep(1)  # Give some time for the server to start
+    return process
 # --------------------------------------
