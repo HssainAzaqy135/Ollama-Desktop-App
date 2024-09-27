@@ -7,4 +7,6 @@ Give me three greek letters
 compute the square root of 25
 compute the square root of 29 up to 4 digits of precision
 write marounilabuni twice , then the first and last letter
+Write me a 50 word story about two rival cities
 What is the color of the sky? ###### Very weird answer apparently######
+give me merge sort code

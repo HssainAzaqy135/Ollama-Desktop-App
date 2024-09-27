@@ -1,4 +1,3 @@
-import kivy
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
@@ -7,11 +6,13 @@ from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 from kivy.uix.spinner import Spinner
 from kivy.uix.scrollview import ScrollView
+from kivy.properties import StringProperty,NumericProperty
 from kivy.core.window import Window
+from kivy.clock import Clock
 import ollama
-import json
 import time
 import subprocess
+import os
 
 # Set the window background color to a pastel blue
 Window.clearcolor = (0.8, 0.9, 1, 1)  # Light pastel blue
@@ -37,20 +38,71 @@ def start_ollama_server():
     process = subprocess.Popen(
         ["ollama", "serve"],
         stdout=subprocess.DEVNULL,  # Hide standard output
-        stderr=subprocess.DEVNULL  # Hide standard error
     )
     time.sleep(3)  # Give some time for the server to start
     return process
 
 
+def check_gpu_availability():
+    """Check if a GPU is available."""
+    try:
+        result = subprocess.run(["nvidia-smi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode == 0:
+            return True
+        else:
+            print("GPU not detected. Make sure NVIDIA drivers are installed and running.")
+            return False
+    except FileNotFoundError:
+        print("nvidia-smi not found. Please ensure CUDA is installed and accessible.")
+        return False
+
+
 def get_response(curr_chat: ChatObject, model: str):
     start = time.time()
+
+    # Check if GPUs are available before running the chat model
+    if check_gpu_availability():
+        # Use GPU 0
+        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+        print("Running on GPU 0")
+    else:
+        print("No GPUs available, running on CPU.")
+
     response = ollama.chat(model=model, messages=curr_chat.messages)
     end = time.time()
     return response, (end - start)
 
 
+class ScrollableLabel(ScrollView):
+    text = StringProperty('')
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.layout = BoxLayout(orientation='vertical', size_hint_y=None)
+        self.layout.bind(minimum_height=self.layout.setter('height'))
+        self.label = Label(text=self.text, size_hint_y=None, markup=True, color=(0.2, 0.2, 0.2, 1))
+        self.label.bind(texture_size=self._set_label_height, size=self._set_label_width)
+        self.layout.add_widget(self.label)
+        self.add_widget(self.layout)
+
+    def _set_label_height(self, instance, size):
+        self.label.height = size[1]
+        self.layout.height = size[1]
+
+    def _set_label_width(self, instance, size):
+        self.label.text_size = (size[0], None)
+
+    def update_text(self, new_text):
+        self.label.text += new_text
+        Clock.schedule_once(self._scroll_to_bottom, 0.1)
+
+    def _scroll_to_bottom(self, dt):
+        self.scroll_y = 0
+
+
 class LlamaChatApp(App):
+    response_window_height = NumericProperty(400)  # Default height, can be configured
+
     def build(self):
         self.title = "LLaMA Desktop App"
 
@@ -63,43 +115,38 @@ class LlamaChatApp(App):
         layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
 
         # Create a prompt label and entry field
-        prompt_label = Label(text="Enter your prompt:", color=(0.2, 0.4, 0.6, 1))
+        prompt_label = Label(text="Enter your prompt:", color=(0.2, 0.2, 0.2, 1), size_hint_y=None, height=30)
         layout.add_widget(prompt_label)
 
         self.prompt_entry = TextInput(multiline=False, size_hint_y=None, height=40,
                                       background_color=(1, 1, 1, 1),
-                                      foreground_color=(0, 0, 0, 1))
+                                      foreground_color=(0.2, 0.2, 0.2, 1))
         layout.add_widget(self.prompt_entry)
 
         # Create a dropdown for model selection
         self.model_spinner = Spinner(
             text='Choose a model',
             values=self.available_models,
-            size_hint=(None, None),
-            size=(200, 44),
-            pos_hint={'center_x': 0.5},
-            background_color=(0.6, 0.8, 1, 1),  # Light pastel blue background
-            color=(0, 0, 0, 1)  # Black text
+            size_hint_y=None,
+            height=50,
+            background_color=(0.6, 0.8, 1, 1),
+            color=(0.2, 0.2, 0.2, 1)
         )
         layout.add_widget(self.model_spinner)
 
-        # Create a response label inside a ScrollView
-        response_label = Label(text="Response:", color=(0.2, 0.4, 0.6, 1))
-        layout.add_widget(response_label)
-
-        # Create a ScrollView for the response output
-        self.response_scroll = ScrollView(size_hint=(1, None), size=(400, 200))
-        self.response_output = Label(text="", size_hint_y=None, color=(0, 0, 0, 1))
-        self.response_output.bind(size=self.response_output.setter('text_size'))
-        self.response_output.text_size = (self.response_scroll.width, None)  # Auto size based on width
-        self.response_scroll.add_widget(self.response_output)
-
-        layout.add_widget(self.response_scroll)
-
         # Create a button to generate the response
-        generate_button = Button(text="Generate Response", size_hint_y=None, height=40)
+        generate_button = Button(text="Generate Response", size_hint_y=None, height=40,
+                                 background_color=(0.6, 0.8, 1, 1), color=(0.2, 0.2, 0.2, 1))
         generate_button.bind(on_press=self.generate_response)
         layout.add_widget(generate_button)
+
+        # Create a response label
+        response_label = Label(text="Response:", color=(0.2, 0.2, 0.2, 1), size_hint_y=None, height=30)
+        layout.add_widget(response_label)
+
+        # Create a ScrollableLabel for the response output with configurable height
+        self.response_output = ScrollableLabel(size_hint_y=None, height=self.response_window_height)
+        layout.add_widget(self.response_output)
 
         return layout
 
@@ -118,18 +165,33 @@ class LlamaChatApp(App):
             response, total_time = get_response(curr_chat=self.curr_chat, model=self.selected_model)
 
             # Display the response
-            self.response_output.text = f"{response['message']['content']}\nComputation time: {total_time:.2f}s"
+            new_text = f"\n\nUser: {prompt}\n\nResponse: {response['message']['content']}\nComputation time: {total_time:.2f}s\n"
+            self.response_output.update_text(new_text)
             self.curr_chat.replies.append(response['message']['content'])
             self.curr_chat.messages.append(response['message'])
+
+            # Clear the prompt entry
+            self.prompt_entry.text = ""
         else:
             self.show_error("Please enter a prompt.")
 
     def show_error(self, message):
-        popup = Popup(title="Error", content=Label(text=message), size_hint=(0.6, 0.4),
+        popup = Popup(title="Error",
+                      content=Label(text=message, color=(0.2, 0.2, 0.2, 1)),
+                      size_hint=(0.6, 0.4),
                       background_color=(0.8, 0.9, 1, 1))
         popup.open()
 
+    def on_stop(self):
+        # Stop the Ollama server when the app is closed
+        if self.ollama_server:
+            self.ollama_server.terminate()
+            print("Ollama server has been shut down.")
 
 if __name__ == "__main__":
-    start_ollama_server()
-    LlamaChatApp().run()
+    # Start the Ollama server and store the process handle
+    app = LlamaChatApp()
+    app.ollama_server = start_ollama_server()
+    # Visual Configs
+    app.response_window_height = 400
+    app.run()
