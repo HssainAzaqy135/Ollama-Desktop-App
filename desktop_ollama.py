@@ -17,6 +17,7 @@ import subprocess
 import ollama
 import time
 import os
+import psutil
 
 # Set the fixed window background color
 Window.clearcolor = (0.9, 0.8, 0.5, 1)  # Light pastel blue
@@ -45,6 +46,12 @@ def start_ollama_server():
     time.sleep(3)  # Give some time for the server to start
     return process
 
+def terminate_with_children(process):
+    parent = psutil.Process(process.pid)
+    for child in parent.children(recursive=True):  # Terminate child processes
+        child.terminate()
+    parent.terminate()
+    parent.wait()
 
 def check_gpu_availability():
     try:
@@ -77,7 +84,7 @@ def check_gpu_availability():
 def get_response(curr_chat: ChatObject, model: str, selected_gpu: str):
     start = time.time()
 
-    if selected_gpu:
+    if selected_gpu != "CPU":
         os.environ["CUDA_VISIBLE_DEVICES"] = selected_gpu.split(":")[0]  # Extract the GPU index
         print(f"Running on GPU {selected_gpu}")
     else:
@@ -302,16 +309,37 @@ class LlamaChatApp(App):
                       content=Label(text=message),
                       size_hint=(0.6, 0.4))
         popup.open()
+    # def on_stop(self):
+    #     # Terminate the Ollama server process when the app closes
+    #     if hasattr(self, 'ollama_server') and self.ollama_server:
+    #         self.ollama_server.terminate()  # Gracefully ask the server to stop
+    #         self.ollama_server.wait()
+    #         time.sleep(2)  # Wait briefly to allow the server to shut down
+    #
+    #         # Check if the process has terminated
+    #         if self.ollama_server.poll() is None:
+    #             print("Ollama server did not terminate. Forcefully stopping it...")
+    #             self.ollama_server.kill()  # Forcefully terminate if not stopped
+    #         else:
+    #             print("Ollama server stopped successfully.")
     def on_stop(self):
         # Terminate the Ollama server process when the app closes
         if hasattr(self, 'ollama_server') and self.ollama_server:
-            self.ollama_server.terminate()  # Gracefully ask the server to stop
-            time.sleep(1)  # Wait briefly to allow the server to shut down
+            print("Attempting to terminate the Ollama server...")
 
-            # Check if the process has terminated
+            # Gracefully ask the server to stop
+            self.ollama_server.terminate()
+            try:
+                self.ollama_server.wait(timeout=2)  # Wait briefly for the process to exit
+            except subprocess.TimeoutExpired:
+                print("Ollama server is taking too long to terminate.")
+
+            time.sleep(2)  # Additional wait to allow cleanup
+
+            # Check if the process is still running
             if self.ollama_server.poll() is None:
                 print("Ollama server did not terminate. Forcefully stopping it...")
-                self.ollama_server.kill()  # Forcefully terminate if not stopped
+                terminate_with_children(self.ollama_server)  # Terminate with child processes
             else:
                 print("Ollama server stopped successfully.")
 
