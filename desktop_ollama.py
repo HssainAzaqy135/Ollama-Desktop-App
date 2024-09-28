@@ -6,7 +6,7 @@ from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 from kivy.uix.spinner import Spinner
 from kivy.uix.scrollview import ScrollView
-from kivy.properties import StringProperty,NumericProperty
+from kivy.properties import StringProperty, NumericProperty
 from kivy.core.window import Window
 from kivy.clock import Clock
 import ollama
@@ -17,7 +17,6 @@ import os
 # Set the window background color to a pastel blue
 Window.clearcolor = (0.8, 0.9, 1, 1)  # Light pastel blue
 
-
 class ChatObject:
     def __init__(self, title: str):
         self.prompts = []
@@ -26,12 +25,10 @@ class ChatObject:
         self.title = title
         self.messages = []
 
-
 def get_available_models():
     models_dict = ollama.list()
     model_list = [model['name'] for model in models_dict['models']]
     return model_list
-
 
 def start_ollama_server():
     # Run the ollama serve command in a background process and suppress output
@@ -42,36 +39,34 @@ def start_ollama_server():
     time.sleep(3)  # Give some time for the server to start
     return process
 
-
 def check_gpu_availability():
-    """Check if a GPU is available."""
+    """Check if GPUs are available using nvidia-smi."""
     try:
-        result = subprocess.run(["nvidia-smi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        result = subprocess.run(["nvidia-smi", "--query-gpu=index,name", "--format=csv,noheader"],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if result.returncode == 0:
-            return True
+            gpu_list = result.stdout.strip().split('\n')
+            return gpu_list  # Returns GPU index and name
         else:
             print("GPU not detected. Make sure NVIDIA drivers are installed and running.")
-            return False
+            return []
     except FileNotFoundError:
         print("nvidia-smi not found. Please ensure CUDA is installed and accessible.")
-        return False
+        return []
 
-
-def get_response(curr_chat: ChatObject, model: str):
+def get_response(curr_chat: ChatObject, model: str, selected_gpu: str):
     start = time.time()
 
-    # Check if GPUs are available before running the chat model
-    if check_gpu_availability():
-        # Use GPU 0
-        os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-        print("Running on GPU 0")
+    # Set the selected GPU
+    if selected_gpu:
+        os.environ["CUDA_VISIBLE_DEVICES"] = selected_gpu.split(":")[0]  # Extract the GPU index
+        print(f"Running on GPU {selected_gpu}")
     else:
-        print("No GPUs available, running on CPU.")
+        print("No GPU selected, running on CPU.")
 
     response = ollama.chat(model=model, messages=curr_chat.messages)
     end = time.time()
     return response, (end - start)
-
 
 class ScrollableLabel(ScrollView):
     text = StringProperty('')
@@ -99,7 +94,6 @@ class ScrollableLabel(ScrollView):
     def _scroll_to_bottom(self, dt):
         self.scroll_y = 0
 
-
 class LlamaChatApp(App):
     response_window_height = NumericProperty(400)  # Default height, can be configured
 
@@ -110,6 +104,10 @@ class LlamaChatApp(App):
         self.curr_chat = ChatObject(title="Chat with LLaMA")
         self.available_models = get_available_models()
         self.selected_model = None
+
+        # Get available GPUs
+        self.gpus = check_gpu_availability()
+        self.selected_gpu = None
 
         # Create a layout
         layout = BoxLayout(orientation='vertical', padding=10, spacing=10)
@@ -134,6 +132,17 @@ class LlamaChatApp(App):
         )
         layout.add_widget(self.model_spinner)
 
+        # Create a dropdown for GPU selection
+        self.gpu_spinner = Spinner(
+            text='Select GPU (or leave blank for CPU)',
+            values=self.gpus if self.gpus else ['No GPUs available'],
+            size_hint_y=None,
+            height=50,
+            background_color=(0.6, 0.8, 1, 1),
+            color=(0.2, 0.2, 0.2, 1)
+        )
+        layout.add_widget(self.gpu_spinner)
+
         # Create a button to generate the response
         generate_button = Button(text="Generate Response", size_hint_y=None, height=40,
                                  background_color=(0.6, 0.8, 1, 1), color=(0.2, 0.2, 0.2, 1))
@@ -152,6 +161,7 @@ class LlamaChatApp(App):
 
     def generate_response(self, instance):
         self.selected_model = self.model_spinner.text
+        self.selected_gpu = self.gpu_spinner.text
 
         if self.selected_model == 'Choose a model':
             self.show_error("Please choose a model first.")
@@ -162,7 +172,7 @@ class LlamaChatApp(App):
             self.curr_chat.prompts.append(prompt)
             self.curr_chat.messages.append({"role": "user", "content": prompt})
 
-            response, total_time = get_response(curr_chat=self.curr_chat, model=self.selected_model)
+            response, total_time = get_response(curr_chat=self.curr_chat, model=self.selected_model, selected_gpu=self.selected_gpu)
 
             # Display the response
             new_text = f"\n\nUser: {prompt}\n\nResponse: {response['message']['content']}\nComputation time: {total_time:.2f}s\n"

@@ -8,7 +8,9 @@ By:
 1. Allow prompting and getting response from LLama3 models with chat UI $
 2. Model Selection $
 3. Chat history 
-4. Gpu acceleration and gpu selection $
+4. Gpu acceleration and gpu selection 
+- 4.1. Windows $
+- 4.2. Mac
 
 ## Possible features to add: ($ marks done)
 1. Instructions tab set per chat (None changeable)
