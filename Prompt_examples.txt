@@ -10,3 +10,5 @@ write marounilabuni twice , then the first and last letter
 Write me a 50 word story about two rival cities
 What is the color of the sky? ###### Very weird answer apparently######
 give me merge sort code
+count to 40 from 21
+count to 33 from 31, and then from 29 to 65. then from 1 to 5
