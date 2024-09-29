@@ -301,7 +301,7 @@ class LlamaChatApp(App):
         self.curr_chat.messages.append({"role": "assistant", "content": response['message']['content']})
         self.curr_chat.reply_time.append(time_taken)
 
-        self.response_output.update_text(f"[b]LLaMA:[/b] {response['message']['content']}\n\n")
+        self.response_output.update_text(f"[b]{self.selected_model}:[/b] {response['message']['content']}\n\n")
         self.response_output.update_text(f"[i]Response time: {time_taken:.2f} seconds[/i]\n\n")
 
     def show_error(self, message):
