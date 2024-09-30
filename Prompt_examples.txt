@@ -12,3 +12,5 @@ What is the color of the sky? ###### Very weird answer apparently######
 give me merge sort code
 count to 40 from 21
 count to 33 from 31, and then from 29 to 65. then from 1 to 5
+choose two random numbers from 1 to 5
+what is the sum of all odd numbers from 1 to 10?

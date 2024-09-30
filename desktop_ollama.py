@@ -12,6 +12,8 @@ from kivy.properties import StringProperty, NumericProperty, ListProperty
 from kivy.core.window import Window
 from kivy.clock import Clock
 from kivy.graphics import Color, Rectangle
+# Python modules
+from concurrent.futures import ThreadPoolExecutor
 import platform
 import subprocess
 import ollama
@@ -20,7 +22,7 @@ import os
 import psutil
 
 # Set the fixed window background color
-Window.clearcolor = (0.9, 0.8, 0.5, 1)  # Light pastel blue
+Window.clearcolor = (0.0, 1, 0.2, 1)
 
 
 class ChatObject:
@@ -167,6 +169,7 @@ class SettingsTab(BoxLayout):
 
 
 class LlamaChatApp(App):
+    executor = ThreadPoolExecutor(max_workers=2)
     response_window_height = NumericProperty(400)
     background_color = ListProperty([0.8, 0.9, 1, 1])  # Fixed background color
     text_color = ListProperty([0.2, 0.8, 0.2, 1])
@@ -235,6 +238,11 @@ class LlamaChatApp(App):
         generate_button.bind(on_press=self.generate_response)
         chat_layout.add_widget(generate_button)
 
+        # Adding Clear Context Button
+        clear_button = Button(text="Clear Model Context", size_hint_y=None, height=40)
+        clear_button.bind(on_press=self.clear_context)
+        chat_layout.add_widget(clear_button)
+
         response_label = Label(text="Response:", size_hint_y=None, height=30)
         chat_layout.add_widget(response_label)
 
@@ -242,6 +250,16 @@ class LlamaChatApp(App):
         chat_layout.add_widget(self.response_output)
 
         return main_layout
+
+    def clear_context(self, instance):
+        # Clear the current chat context
+        self.curr_chat.messages.clear()
+        self.curr_chat.replies.clear()
+        self.curr_chat.reply_time.clear()
+
+        # Clear the response output
+        self.response_output.label.text = ""  # Reset the response tab text
+        print("Chat context and response cleared.")
 
     def _update_rect(self, instance, value):
         self.bg_rect.pos = instance.pos
@@ -286,42 +304,64 @@ class LlamaChatApp(App):
         self.curr_chat.messages.append({"role": "user", "content": prompt})
         self.response_output.update_text(f"[b]User:[/b] {prompt}\n\n")
 
-        # Handle different device selections
-        if self.selected_gpu == "CPU":
-            os.environ["CUDA_VISIBLE_DEVICES"] = ""
-            print("Running on CPU.")
-        elif self.selected_gpu == "MPS":
-            print("Running on MPS (Apple GPU).")
-            # You don't need to set CUDA_VISIBLE_DEVICES for MPS, just print a message
-        else:
-            os.environ["CUDA_VISIBLE_DEVICES"] = self.selected_gpu.split(":")[0]  # Extract the GPU index
-            print(f"Running on GPU {self.selected_gpu}")
+        # Schedule the background task using the thread pool executor
+        self.executor.submit(self.fetch_response_async, prompt)
 
+    def fetch_response_async(self, prompt):
+        # This runs in the background
         response, time_taken = get_response(self.curr_chat, self.selected_model, self.selected_gpu)
+
+        # Once the response is ready, schedule the UI update on the main thread
+        Clock.schedule_once(lambda dt: self.update_ui_with_response(response, time_taken), 0)
+
+    def update_ui_with_response(self, response, time_taken):
+        # This runs on the main thread (UI thread)
         self.curr_chat.messages.append({"role": "assistant", "content": response['message']['content']})
         self.curr_chat.reply_time.append(time_taken)
 
         self.response_output.update_text(f"[b]{self.selected_model}:[/b] {response['message']['content']}\n\n")
         self.response_output.update_text(f"[i]Response time: {time_taken:.2f} seconds[/i]\n\n")
+    # Previous code, ignore
+    # def generate_response(self, instance):
+    #     self.selected_model = self.model_spinner.text
+    #     self.selected_gpu = self.gpu_spinner.text
+    #
+    #     if self.selected_model == 'Choose a model':
+    #         self.show_error("Please choose a model first.")
+    #         return
+    #
+    #     prompt = self.prompt_entry.text
+    #     if not prompt:
+    #         self.show_error("Please enter a prompt.")
+    #         return
+    #
+    #     self.curr_chat.messages.append({"role": "user", "content": prompt})
+    #     self.response_output.update_text(f"[b]User:[/b] {prompt}\n\n")
+    #
+    #     # Handle different device selections
+    #     if self.selected_gpu == "CPU":
+    #         os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    #         print("Running on CPU.")
+    #     elif self.selected_gpu == "MPS":
+    #         print("Running on MPS (Apple GPU).")
+    #         # You don't need to set CUDA_VISIBLE_DEVICES for MPS, just print a message
+    #     else:
+    #         os.environ["CUDA_VISIBLE_DEVICES"] = self.selected_gpu.split(":")[0]  # Extract the GPU index
+    #         print(f"Running on GPU {self.selected_gpu}")
+    #
+    #     response, time_taken = get_response(self.curr_chat, self.selected_model, self.selected_gpu)
+    #     self.curr_chat.messages.append({"role": "assistant", "content": response['message']['content']})
+    #     self.curr_chat.reply_time.append(time_taken)
+    #
+    #     self.response_output.update_text(f"[b]{self.selected_model}:[/b] {response['message']['content']}\n\n")
+    #     self.response_output.update_text(f"[i]Response time: {time_taken:.2f} seconds[/i]\n\n")
 
     def show_error(self, message):
         popup = Popup(title='Error',
                       content=Label(text=message),
                       size_hint=(0.6, 0.4))
         popup.open()
-    # def on_stop(self):
-    #     # Terminate the Ollama server process when the app closes
-    #     if hasattr(self, 'ollama_server') and self.ollama_server:
-    #         self.ollama_server.terminate()  # Gracefully ask the server to stop
-    #         self.ollama_server.wait()
-    #         time.sleep(2)  # Wait briefly to allow the server to shut down
-    #
-    #         # Check if the process has terminated
-    #         if self.ollama_server.poll() is None:
-    #             print("Ollama server did not terminate. Forcefully stopping it...")
-    #             self.ollama_server.kill()  # Forcefully terminate if not stopped
-    #         else:
-    #             print("Ollama server stopped successfully.")
+
     def on_stop(self):
         # Terminate the Ollama server process when the app closes
         if hasattr(self, 'ollama_server') and self.ollama_server:
@@ -344,10 +384,11 @@ class LlamaChatApp(App):
                 print("Ollama server stopped successfully.")
 
 
+
 if __name__ == "__main__":
     # Start the Ollama server and store the process handle
     app = LlamaChatApp()
     app.ollama_server = start_ollama_server()
     # Visual Configs
-    app.response_window_height = 400
+    app.response_window_height = 300
     app.run()
