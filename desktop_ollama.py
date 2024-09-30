@@ -1,5 +1,6 @@
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
 from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
@@ -20,9 +21,6 @@ import ollama
 import time
 import os
 import psutil
-
-# Set the fixed window background color
-Window.clearcolor = (0.0, 1, 0.2, 1)
 
 
 class ChatObject:
@@ -154,7 +152,11 @@ class SettingsTab(BoxLayout):
         self.add_widget(self.text_blue)
 
         # Apply Button
-        self.apply_button = Button(text="Apply Changes", size_hint_y=None, height=40)
+        self.apply_button = Button(
+            text="Apply Changes",
+            size_hint=(0.3, 0.3),  # 30% of the parent size for both width and height
+            pos_hint={'center_x': 0.5, 'center_y': 0.5}  # Center the button
+        )
         self.apply_button.bind(on_press=self.apply_changes)
         self.add_widget(self.apply_button)
 
@@ -173,7 +175,10 @@ class LlamaChatApp(App):
     response_window_height = NumericProperty(400)
     background_color = ListProperty([0.8, 0.9, 1, 1])  # Fixed background color
     text_color = ListProperty([0.2, 0.8, 0.2, 1])
-
+    # Window properties
+    Window.clearcolor = (0.0, 1, 0.2, 1)
+    Window.size = Window.system_size
+    # -----------------
     def build(self):
         self.title = "LLaMA Desktop App"
 
@@ -212,41 +217,67 @@ class LlamaChatApp(App):
         self.tab_panel.default_tab = chat_tab
 
         # Add widgets to the chat layout
-        prompt_label = Label(text="Enter your prompt:", size_hint_y=None, height=30)
+        prompt_label = Label(
+            text="Enter your prompt:",
+            size_hint_y=0.1,  # Relative height
+            pos_hint={'center_x': 0.5}
+        )
         chat_layout.add_widget(prompt_label)
 
-        self.prompt_entry = TextInput(multiline=False, size_hint_y=None, height=40)
+        self.prompt_entry = TextInput(
+            multiline=False,
+            size_hint_y=0.1  # Relative height
+        )
         chat_layout.add_widget(self.prompt_entry)
 
+        # Create a GridLayout for spinners and buttons
+        grid_layout = GridLayout(
+            cols=2,
+            spacing=5,
+            size_hint_y=0.3  # Relative height for spinners and buttons together
+        )
+
+        # Add spinners and buttons to the GridLayout
         self.model_spinner = Spinner(
             text='Choose a model',
             values=self.available_models,
-            size_hint_y=None,
-            height=50
+            size_hint=(0.5, 0.5)  # Take half the width and half the height of a grid cell
         )
-        chat_layout.add_widget(self.model_spinner)
+        grid_layout.add_widget(self.model_spinner)
 
         self.gpu_spinner = Spinner(
             text='Select GPU (or leave blank for CPU)',
             values=self.gpus if self.gpus else ['No GPUs available'],
-            size_hint_y=None,
-            height=50
+            size_hint=(0.5, 0.5)
         )
-        chat_layout.add_widget(self.gpu_spinner)
+        grid_layout.add_widget(self.gpu_spinner)
 
-        generate_button = Button(text="Generate Response", size_hint_y=None, height=40)
+        generate_button = Button(
+            text="Generate Response",
+            size_hint=(0.5, 0.5)  # Button takes half the width and half the height of a grid cell
+        )
         generate_button.bind(on_press=self.generate_response)
-        chat_layout.add_widget(generate_button)
+        grid_layout.add_widget(generate_button)
 
-        # Adding Clear Context Button
-        clear_button = Button(text="Clear Model Context", size_hint_y=None, height=40)
+        clear_button = Button(
+            text="Clear Model Context",
+            size_hint=(0.5, 0.5)
+        )
         clear_button.bind(on_press=self.clear_context)
-        chat_layout.add_widget(clear_button)
+        grid_layout.add_widget(clear_button)
 
-        response_label = Label(text="Response:", size_hint_y=None, height=30)
+        # Add the grid layout to the main chat layout
+        chat_layout.add_widget(grid_layout)
+
+        response_label = Label(
+            text="Response:",
+            size_hint_y=0.05  # Smaller relative height for the label
+        )
         chat_layout.add_widget(response_label)
 
-        self.response_output = ScrollableLabel(size_hint_y=None, height=self.response_window_height)
+        self.response_output = ScrollableLabel(
+            size_hint_y=0.5  # Take up the remaining space
+        )
         chat_layout.add_widget(self.response_output)
 
         return main_layout
@@ -321,40 +352,6 @@ class LlamaChatApp(App):
 
         self.response_output.update_text(f"[b]{self.selected_model}:[/b] {response['message']['content']}\n\n")
         self.response_output.update_text(f"[i]Response time: {time_taken:.2f} seconds[/i]\n\n")
-    # Previous code, ignore
-    # def generate_response(self, instance):
-    #     self.selected_model = self.model_spinner.text
-    #     self.selected_gpu = self.gpu_spinner.text
-    #
-    #     if self.selected_model == 'Choose a model':
-    #         self.show_error("Please choose a model first.")
-    #         return
-    #
-    #     prompt = self.prompt_entry.text
-    #     if not prompt:
-    #         self.show_error("Please enter a prompt.")
-    #         return
-    #
-    #     self.curr_chat.messages.append({"role": "user", "content": prompt})
-    #     self.response_output.update_text(f"[b]User:[/b] {prompt}\n\n")
-    #
-    #     # Handle different device selections
-    #     if self.selected_gpu == "CPU":
-    #         os.environ["CUDA_VISIBLE_DEVICES"] = ""
-    #         print("Running on CPU.")
-    #     elif self.selected_gpu == "MPS":
-    #         print("Running on MPS (Apple GPU).")
-    #         # You don't need to set CUDA_VISIBLE_DEVICES for MPS, just print a message
-    #     else:
-    #         os.environ["CUDA_VISIBLE_DEVICES"] = self.selected_gpu.split(":")[0]  # Extract the GPU index
-    #         print(f"Running on GPU {self.selected_gpu}")
-    #
-    #     response, time_taken = get_response(self.curr_chat, self.selected_model, self.selected_gpu)
-    #     self.curr_chat.messages.append({"role": "assistant", "content": response['message']['content']})
-    #     self.curr_chat.reply_time.append(time_taken)
-    #
-    #     self.response_output.update_text(f"[b]{self.selected_model}:[/b] {response['message']['content']}\n\n")
-    #     self.response_output.update_text(f"[i]Response time: {time_taken:.2f} seconds[/i]\n\n")
 
     def show_error(self, message):
         popup = Popup(title='Error',
