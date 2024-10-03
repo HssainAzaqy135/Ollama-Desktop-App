@@ -72,7 +72,21 @@ class LlamaDesktopApp(ctk.CTk):
         super().__init__()
 
         self.title("Llama Desktop App")
-        self.geometry("900x700")
+
+        # Set the window size
+        window_width = 900
+        window_height = 700
+
+        # Get screen width and height
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+
+        # Calculate the position to center the window
+        position_x = int((screen_width / 2) - (window_width / 2))
+        position_y = int((screen_height / 2) - (window_height / 2))
+
+        # Set the geometry of the window with position and size
+        self.geometry(f"{window_width}x{window_height}+{position_x}+{position_y}")
 
         self.executor = ThreadPoolExecutor(max_workers=2)
         self.chats = []
@@ -125,29 +139,31 @@ class LlamaDesktopApp(ctk.CTk):
         self.prompt_entry = ctk.CTkEntry(self.chat_tab, height=30)
         self.prompt_entry.grid(row=1, column=0, sticky="ew", pady=(0, 10))
 
-        # Model and GPU selection
+        # Create a frame for 2x2 grid (dropdowns and buttons)
         selection_frame = ctk.CTkFrame(self.chat_tab)
         selection_frame.grid(row=2, column=0, sticky="ew", pady=(0, 10))
-        selection_frame.grid_columnconfigure((0, 1), weight=1)
 
+        # Configure equal weight for rows and columns to ensure proportional sizing
+        selection_frame.grid_columnconfigure((0, 1), weight=1, uniform="col")
+        selection_frame.grid_rowconfigure((0, 1), weight=1, uniform="row")
+
+        # Model dropdown in first row, first column
         self.model_var = tk.StringVar(value="Choose a model")
         self.model_dropdown = ctk.CTkOptionMenu(selection_frame, variable=self.model_var, values=self.available_models)
-        self.model_dropdown.grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        self.model_dropdown.grid(row=0, column=0, sticky="nsew", padx=(0, 5), pady=(0, 5))
 
+        # GPU dropdown in first row, second column
         self.gpu_var = tk.StringVar(value="Select GPU (or leave blank for CPU)")
         self.gpu_dropdown = ctk.CTkOptionMenu(selection_frame, variable=self.gpu_var, values=self.gpus)
-        self.gpu_dropdown.grid(row=0, column=1, sticky="ew", padx=(5, 0))
+        self.gpu_dropdown.grid(row=0, column=1, sticky="nsew", padx=(5, 0), pady=(0, 5))
 
-        # Buttons
-        button_frame = ctk.CTkFrame(self.chat_tab)
-        button_frame.grid(row=3, column=0, sticky="ew", pady=(0, 10))
-        button_frame.grid_columnconfigure((0, 1), weight=1)
+        # "Generate Response" button in second row, first column
+        generate_button = ctk.CTkButton(selection_frame, text="Generate Response", command=self.generate_response)
+        generate_button.grid(row=1, column=0, sticky="nsew", padx=(0, 5), pady=(5, 0))
 
-        generate_button = ctk.CTkButton(button_frame, text="Generate Response", command=self.generate_response)
-        generate_button.grid(row=0, column=0, sticky="ew", padx=(0, 5))
-
-        clear_button = ctk.CTkButton(button_frame, text="Clear Chat", command=self.clear_chat)
-        clear_button.grid(row=0, column=1, sticky="ew", padx=(5, 0))
+        # "Clear Chat" button in second row, second column
+        clear_button = ctk.CTkButton(selection_frame, text="Clear Chat", command=self.clear_chat)
+        clear_button.grid(row=1, column=1, sticky="nsew", padx=(5, 0), pady=(5, 0))
 
         # Chat display
         self.chat_display = scrolledtext.ScrolledText(self.chat_tab, wrap=tk.WORD, bg='#2b2b2b', fg='white')
