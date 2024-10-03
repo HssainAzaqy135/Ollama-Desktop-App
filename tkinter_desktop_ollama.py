@@ -235,10 +235,29 @@ class LlamaDesktopApp(ctk.CTk):
             self.update_chat_display()
 
     def update_chat_display(self):
+        # Clear and prepare the chat display
         self.chat_display.config(state=tk.NORMAL)
         self.chat_display.delete(1.0, tk.END)
-        for message in self.current_chat.messages:
-            self.chat_display.insert(tk.END, f"{message['role'].capitalize()}: {message['content']}\n\n")
+
+        # Define the bold tag if it doesn't already exist
+        self.chat_display.tag_configure("bold", font=("Arial", 12, "bold"))
+
+        # Loop through messages and display them
+        for i in range(len(self.current_chat.messages)):
+            if self.current_chat.messages[i]['role'] != 'user':
+                # Insert the header in bold
+                self.chat_display.insert(tk.END, f"{self.selected_model}:\n ", "bold")
+                # Insert the message content normally
+                self.chat_display.insert(tk.END, f"{self.current_chat.messages[i]['content']}\n\n")
+
+                self.chat_display.insert(tk.END, f"Response time: {self.current_chat.reply_time[int(i/2)]:.2f} seconds\n\n")
+            else:
+                self.chat_display.insert(tk.END, "User:\n ", "bold")
+                # Insert the message content normally
+                self.chat_display.insert(tk.END, f"{self.current_chat.messages[i]['content']}\n\n")
+
+
+
         self.chat_display.config(state=tk.DISABLED)
         self.chat_display.see(tk.END)
 
@@ -276,9 +295,6 @@ class LlamaDesktopApp(ctk.CTk):
         self.current_chat.reply_time.append(time_taken)
 
         self.update_chat_display()
-        self.chat_display.config(state=tk.NORMAL)
-        self.chat_display.insert(tk.END, f"Response time: {time_taken:.2f} seconds\n\n")
-        self.chat_display.config(state=tk.DISABLED)
         self.chat_display.see(tk.END)
 
     def on_closing(self):
