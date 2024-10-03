@@ -72,10 +72,11 @@ class LlamaDesktopApp(ctk.CTk):
         super().__init__()
 
         self.title("Llama Desktop App")
-
         # Set the window size
         window_width = 900
         window_height = 700
+        self.font_size = 12 #Default font size
+        self.slider_value_vars = {}
 
         # Get screen width and height
         screen_width = self.winfo_screenwidth()
@@ -96,10 +97,17 @@ class LlamaDesktopApp(ctk.CTk):
         self.gpus = check_gpu_availability()
         self.selected_gpu = None
 
-        self.text_color = {"red": 0.2, "green": 0.2, "blue": 0.2}
-
+        self.text_color = {"red": 0.2, "green": 0.8, "blue": 0.2}
         self.create_widgets()
         self.new_chat()
+
+        self.red_slider.set(self.text_color['red'])
+        self.green_slider.set(self.text_color['green'])
+        self.blue_slider.set(self.text_color['blue'])
+        self.apply_color_changes()
+
+        self.font_size_slider.set(self.font_size)
+        self.apply_font_size_changes()
 
     def create_widgets(self):
         self.grid_columnconfigure(1, weight=1)
@@ -177,31 +185,89 @@ class LlamaDesktopApp(ctk.CTk):
                 break  # Stop after finding the scrollbar
 
     def create_settings_tab(self):
-        self.settings_tab.grid_columnconfigure(0, weight=1)
-        self.settings_tab.grid_rowconfigure(4, weight=1)
+        self.settings_tab.grid_columnconfigure(1, weight=1)  # Add weight to column 1
+        self.settings_tab.grid_rowconfigure(6, weight=1)  # Increased to accommodate new elements
 
-        ctk.CTkLabel(self.settings_tab, text="Text Color", font=("Arial", 16)).grid(row=0, column=0, pady=(0, 10))
+        ctk.CTkLabel(self.settings_tab, text="Text Color", font=("Arial", 16)).grid(row=0, column=0, columnspan=2, pady=(0, 10))
 
         # Color sliders
-        self.red_slider = self.create_color_slider(self.settings_tab, "Red", 1)
-        self.green_slider = self.create_color_slider(self.settings_tab, "Green", 2)
-        self.blue_slider = self.create_color_slider(self.settings_tab, "Blue", 3)
+        self.red_slider, red_value_label = self.create_color_slider(self.settings_tab, "Red", 1)
+        self.green_slider, green_value_label = self.create_color_slider(self.settings_tab, "Green", 2)
+        self.blue_slider, blue_value_label = self.create_color_slider(self.settings_tab, "Blue", 3)
+
+        # Font size slider
+        ctk.CTkLabel(self.settings_tab, text="Font Size", font=("Arial", 16)).grid(row=4, column=0, columnspan=2, pady=(20, 5))
+        self.font_size_slider, font_size_value_label = self.create_slider(self.settings_tab, "Font Size", 5, 12, 24, 12)
 
         # Apply button
-        apply_button = ctk.CTkButton(self.settings_tab, text="Apply Changes", command=self.apply_color_changes)
-        apply_button.grid(row=4, column=0, pady=(20, 0))
+        apply_button = ctk.CTkButton(self.settings_tab, text="Apply Changes", command=self.apply_changes)
+        apply_button.grid(row=6, column=0, columnspan=2, pady=(20, 0))
 
-    def create_color_slider(self, parent, color, row):
+    def create_slider(self, parent, name, row, from_, to, number_of_steps):
         frame = ctk.CTkFrame(parent)
-        frame.grid(row=row, column=0, sticky="ew", pady=(0, 10))
+        frame.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(0, 10))
         frame.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(frame, text=f"{color}:").grid(row=0, column=0, padx=(0, 10))
-        slider = ctk.CTkSlider(frame, from_=0, to=1, number_of_steps=100)
+        ctk.CTkLabel(frame, text=f"{name}:").grid(row=0, column=0, padx=(0, 10))
+        slider = ctk.CTkSlider(frame, from_=from_, to=to, number_of_steps=number_of_steps)
         slider.grid(row=0, column=1, sticky="ew")
-        slider.set(self.text_color[color.lower()])
 
-        return slider
+        value_var = tk.StringVar()
+        self.slider_value_vars[name] = value_var
+        value_label = ctk.CTkLabel(frame, textvariable=value_var)
+        value_label.grid(row=0, column=2, padx=(10, 0))
+
+        slider.configure(command=lambda value: self.update_slider_value(name, value))
+        slider.set((from_ + to) / 2)  # Set to middle value
+        self.update_slider_value(name, slider.get())
+
+        return slider, value_label
+
+    def create_color_slider(self, parent, color, row):
+        return self.create_slider(parent, color, row, 0, 1, 100)
+
+    def update_slider_value(self, name, value):
+        if name in ["Red", "Green", "Blue"]:
+            self.slider_value_vars[name].set(f"{value:.2f}")
+        else:
+            self.slider_value_vars[name].set(f"{int(value)}")
+
+
+    def apply_changes(self):
+        self.apply_color_changes()
+        self.apply_font_size_changes()
+
+    def apply_font_size_changes(self):
+        self.font_size = int(self.font_size_slider.get())
+        font = ("Arial", self.font_size)
+
+        # Update font size for chat display
+        self.chat_display.config(font=font)
+
+        # Update font size for prompt entry
+        self.prompt_entry.configure(font=font)
+
+        # Update font size for chat list
+        self.chat_list.config(font=font)
+
+        # Update font size for model and GPU dropdowns
+        self.model_dropdown.configure(font=font)
+        self.gpu_dropdown.configure(font=font)
+
+        # Update font size for all buttons and labels
+        self.update_font_recursive(self, font)
+
+        # Update the bold tag with the new font size (Scaled up by 2)
+        self.chat_display.tag_configure("bold", font=("Arial", self.font_size + 2, "bold"))
+        # Update the color sliders values
+        self.update_slider_value("Font Size", self.font_size_slider.get())
+
+    def update_font_recursive(self, widget, font):
+        if isinstance(widget, (ctk.CTkButton, ctk.CTkLabel, ctk.CTkEntry, ctk.CTkOptionMenu)):
+            widget.configure(font=font)
+
+        for child in widget.winfo_children():
+            self.update_font_recursive(child, font)
 
     def apply_color_changes(self):
         self.text_color["red"] = self.red_slider.get()
@@ -215,6 +281,10 @@ class LlamaDesktopApp(ctk.CTk):
         # Change chat_display background color
         background_color = '#1e1e1e'  # Example: dark background
         self.chat_display.config(bg=background_color)  # Update the background color
+        # Update slider labels
+        self.update_slider_value("Red", self.red_slider.get())
+        self.update_slider_value("Green", self.green_slider.get())
+        self.update_slider_value("Blue", self.blue_slider.get())
 
     def rgb_to_hex(self, r, g, b):
         return f'#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}'
@@ -240,7 +310,7 @@ class LlamaDesktopApp(ctk.CTk):
         self.chat_display.delete(1.0, tk.END)
 
         # Define the bold tag if it doesn't already exist
-        self.chat_display.tag_configure("bold", font=("Arial", 12, "bold"))
+        self.chat_display.tag_configure("bold", font=("Arial", self.font_size, "bold"))
 
         # Loop through messages and display them
         for i in range(len(self.current_chat.messages)):
