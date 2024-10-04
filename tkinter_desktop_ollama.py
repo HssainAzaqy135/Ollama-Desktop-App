@@ -13,10 +13,34 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 class ChatObject:
-    def __init__(self, title: str):
-        self.title = title
+    def __init__(self, name: str):
+        self.name = name
         self.messages = []
         self.reply_time = []
+
+
+import customtkinter as ctk
+
+
+class CenteredInputDialog(ctk.CTkInputDialog):
+    def __init__(self, master=None, width=300, height=200, **kwargs):
+        super().__init__(master, **kwargs)
+        self.width = width
+        self.height = height
+        self.withdraw()  # Hide the window initially
+        self.after(0, self.center_and_show)  # Schedule centering and showing
+
+    def center_and_show(self):
+        self.update_idletasks()  # Ensure size calculations are correct
+        # Force the desired size
+        self.geometry(f"{self.width}x{self.height}")
+        # Recalculate the position
+        x = (self.winfo_screenwidth() // 2) - (self.width // 2)
+        y = (self.winfo_screenheight() // 2) - (self.height // 2)
+        # Set the geometry with both size and position
+        self.geometry(f"{self.width}x{self.height}+{x}+{y}")
+        self.deiconify()  # Show the window
+
 
 def get_available_models():
     models_dict = ollama.list()
@@ -100,7 +124,7 @@ class LlamaDesktopApp(ctk.CTk):
 
         self.text_color = {"red": 0.2, "green": 0.8, "blue": 0.2}
         self.create_widgets()
-        self.new_chat()
+        self.new_chat("New Chat")
 
         self.red_slider.set(self.text_color['red'])
         self.green_slider.set(self.text_color['green'])
@@ -118,8 +142,8 @@ class LlamaDesktopApp(ctk.CTk):
         self.sidebar = ctk.CTkFrame(self, width=200)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         self.sidebar.grid_rowconfigure(1, weight=1)
-
-        new_chat_button = ctk.CTkButton(self.sidebar, text="New Chat", command=self.new_chat)
+        # New Chat button
+        new_chat_button = ctk.CTkButton(self.sidebar, text="New Chat", command=self.prompt_new_chat)
         new_chat_button.grid(row=0, column=0, padx=20, pady=(20, 10))
 
         self.chat_list = tk.Listbox(self.sidebar, bg='#2b2b2b', fg='white', selectbackground='#4a4a4a')
@@ -237,22 +261,40 @@ class LlamaDesktopApp(ctk.CTk):
         else:
             self.slider_value_vars[name].set(f"{int(value)}")
 
+    def prompt_new_chat(self):
+        dialog = CenteredInputDialog(text="Enter a name for the new chat:",
+                                     title="New Chat",
+                                     height=200,
+                                     width=400)
+        name = dialog.get_input()
+        if name is None:
+            # Dialog was cancelled
+            print("New chat creation cancelled")
+            # You can add any other actions you want to take when cancelled
+            return  # Exit the method without creating a new chat
+        if name:
+            self.new_chat(name)
+        else:
+            self.new_chat(f"New Chat")
+    def new_chat(self, name):
+        chat = ChatObject(name)
+        self.chats.append(chat)
+        self.chat_list.insert(tk.END, chat.name)
+        self.chat_list.selection_clear(0, tk.END)
+        self.chat_list.selection_set(tk.END)
+        self.on_chat_select(None)
+
     def remove_chat(self):
         selection = self.chat_list.curselection()
         if selection:
             index = selection[0]
-            # Remove the chat from the list and update the UI
             removed_chat = self.chats.pop(index)
             self.chat_list.delete(index)
-
-            # Update chat titles
-            for i, chat in enumerate(self.chats, 1):
-                chat.title = f"Chat {i}"
 
             # Update listbox items
             self.chat_list.delete(0, tk.END)
             for chat in self.chats:
-                self.chat_list.insert(tk.END, chat.title)
+                self.chat_list.insert(tk.END, chat.name)
 
             # Select the next chat, or the last one if we removed the last chat
             if self.chats:
@@ -263,7 +305,7 @@ class LlamaDesktopApp(ctk.CTk):
                 self.current_chat = None
 
             self.update_chat_display()
-            print(f"Removed chat: {removed_chat.title}")
+            print(f"Removed chat: {removed_chat.name}")
         else:
             messagebox.showinfo("Info", "Please select a chat to remove.")
 
@@ -323,14 +365,6 @@ class LlamaDesktopApp(ctk.CTk):
     def rgb_to_hex(self, r, g, b):
         return f'#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}'
 
-    def new_chat(self):
-        chat = ChatObject(f"Chat {len(self.chats) + 1}")
-        self.chats.append(chat)
-        self.chat_list.insert(tk.END, chat.title)
-        self.chat_list.selection_clear(0, tk.END)
-        self.chat_list.selection_set(tk.END)
-        self.on_chat_select(None)
-
     def on_chat_select(self, event):
         selection = self.chat_list.curselection()
         if selection:
@@ -347,6 +381,7 @@ class LlamaDesktopApp(ctk.CTk):
         self.chat_display.tag_configure("bold", font=("Arial", self.font_size + 2, "bold"))
 
         if self.current_chat:
+            self.chat_display.insert(tk.END, f"Current Chat: {self.current_chat.name}\n\n", "bold")
             # Loop through messages and display them
             for i in range(len(self.current_chat.messages)):
                 if self.current_chat.messages[i]['role'] != 'user':
