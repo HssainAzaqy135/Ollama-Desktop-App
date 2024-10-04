@@ -27,6 +27,7 @@ def start_ollama_server():
     process = subprocess.Popen(
         ["ollama", "serve"],
         stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
     )
     time.sleep(3)  # Give some time for the server to start
     return process
@@ -70,7 +71,7 @@ def get_response(curr_chat: ChatObject, model: str, selected_gpu: str):
 class LlamaDesktopApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-
+        self.ollama_server = start_ollama_server()
         self.title("Llama Desktop App")
         # Set the window size
         window_width = 900
@@ -367,27 +368,30 @@ class LlamaDesktopApp(ctk.CTk):
         self.update_chat_display()
         self.chat_display.see(tk.END)
 
-    def on_closing(self):
-        if hasattr(self, 'ollama_server') and self.ollama_server:
-            print("Attempting to terminate the Ollama server...")
-            self.ollama_server.terminate()
+    def stop_ollama_server(self):
+        if self.ollama_server:
+            print("Stopping Ollama server...")
+
+            # Send a request to stop the server
             try:
-                self.ollama_server.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                print("Ollama server is taking too long to terminate.")
+                ollama.cancel()  # This sends a cancellation request to all running models
+                time.sleep(2)  # Give some time for the server to process the cancellation
+            except Exception as e:
+                print(f"Error stopping Ollama server: {e}")
 
-            time.sleep(2)
-
-            if self.ollama_server.poll() is None:
-                print("Ollama server did not terminate. Forcefully stopping it...")
+            # Terminate the process
+            try:
                 terminate_with_children(self.ollama_server)
-            else:
-                print("Ollama server stopped successfully.")
+                print("Ollama server stopped.")
+            except Exception as e:
+                print(f"Error terminating Ollama server process: {e}")
 
+            self.ollama_server = None
+    def on_closing(self):
+        self.stop_ollama_server()
         self.destroy()
 
 if __name__ == "__main__":
     app = LlamaDesktopApp()
-    app.ollama_server = start_ollama_server()
     app.protocol("WM_DELETE_WINDOW", app.on_closing)
     app.mainloop()
