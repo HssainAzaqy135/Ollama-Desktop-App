@@ -19,9 +19,6 @@ class ChatObject:
         self.reply_time = []
 
 
-import customtkinter as ctk
-
-
 class CenteredInputDialog(ctk.CTkInputDialog):
     def __init__(self, master=None, width=300, height=200, **kwargs):
         super().__init__(master, **kwargs)
