@@ -126,6 +126,10 @@ class LlamaDesktopApp(ctk.CTk):
         self.chat_list.grid(row=1, column=0, padx=20, pady=(10, 20), sticky="nsew")
         self.chat_list.bind('<<ListboxSelect>>', self.on_chat_select)
 
+        # Add Remove Chat button
+        remove_chat_button = ctk.CTkButton(self.sidebar, text="Remove Chat", command=self.remove_chat)
+        remove_chat_button.grid(row=2, column=0, padx=20, pady=(10, 20))
+
         # Notebook (tabbed interface)
         self.notebook = ctk.CTkTabview(self)
         self.notebook.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
@@ -233,6 +237,35 @@ class LlamaDesktopApp(ctk.CTk):
         else:
             self.slider_value_vars[name].set(f"{int(value)}")
 
+    def remove_chat(self):
+        selection = self.chat_list.curselection()
+        if selection:
+            index = selection[0]
+            # Remove the chat from the list and update the UI
+            removed_chat = self.chats.pop(index)
+            self.chat_list.delete(index)
+
+            # Update chat titles
+            for i, chat in enumerate(self.chats, 1):
+                chat.title = f"Chat {i}"
+
+            # Update listbox items
+            self.chat_list.delete(0, tk.END)
+            for chat in self.chats:
+                self.chat_list.insert(tk.END, chat.title)
+
+            # Select the next chat, or the last one if we removed the last chat
+            if self.chats:
+                new_index = min(index, len(self.chats) - 1)
+                self.chat_list.selection_set(new_index)
+                self.current_chat = self.chats[new_index]
+            else:
+                self.current_chat = None
+
+            self.update_chat_display()
+            print(f"Removed chat: {removed_chat.title}")
+        else:
+            messagebox.showinfo("Info", "Please select a chat to remove.")
 
     def apply_changes(self):
         self.apply_color_changes()
@@ -311,23 +344,26 @@ class LlamaDesktopApp(ctk.CTk):
         self.chat_display.delete(1.0, tk.END)
 
         # Define the bold tag if it doesn't already exist
-        self.chat_display.tag_configure("bold", font=("Arial", self.font_size, "bold"))
+        self.chat_display.tag_configure("bold", font=("Arial", self.font_size + 2, "bold"))
 
-        # Loop through messages and display them
-        for i in range(len(self.current_chat.messages)):
-            if self.current_chat.messages[i]['role'] != 'user':
-                # Insert the header in bold
-                self.chat_display.insert(tk.END, f"{self.selected_model}:\n ", "bold")
-                # Insert the message content normally
-                self.chat_display.insert(tk.END, f"{self.current_chat.messages[i]['content']}\n\n")
+        if self.current_chat:
+            # Loop through messages and display them
+            for i in range(len(self.current_chat.messages)):
+                if self.current_chat.messages[i]['role'] != 'user':
+                    # Insert the header in bold
+                    self.chat_display.insert(tk.END, f"{self.selected_model}:\n ", "bold")
+                    # Insert the message content normally
+                    self.chat_display.insert(tk.END, f"{self.current_chat.messages[i]['content']}\n\n")
 
-                self.chat_display.insert(tk.END, f"Response time: {self.current_chat.reply_time[int(i/2)]:.2f} seconds\n\n")
-            else:
-                self.chat_display.insert(tk.END, "User:\n ", "bold")
-                # Insert the message content normally
-                self.chat_display.insert(tk.END, f"{self.current_chat.messages[i]['content']}\n\n")
-
-
+                    if i // 2 < len(self.current_chat.reply_time):
+                        self.chat_display.insert(tk.END,
+                                                 f"Response time: {self.current_chat.reply_time[i // 2]:.2f} seconds\n\n")
+                else:
+                    self.chat_display.insert(tk.END, "User:\n ", "bold")
+                    # Insert the message content normally
+                    self.chat_display.insert(tk.END, f"{self.current_chat.messages[i]['content']}\n\n")
+        else:
+            self.chat_display.insert(tk.END, "No chat selected. Create a new chat or select an existing one.")
 
         self.chat_display.config(state=tk.DISABLED)
         self.chat_display.see(tk.END)
@@ -340,6 +376,10 @@ class LlamaDesktopApp(ctk.CTk):
             print("Chat cleared.")
 
     def generate_response(self):
+        if not self.current_chat:
+            messagebox.showerror("Error", "No chat available. Please create a new chat first.")
+            return
+
         self.selected_model = self.model_var.get()
         self.selected_gpu = self.gpu_var.get()
 
