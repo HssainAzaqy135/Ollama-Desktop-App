@@ -1,11 +1,12 @@
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import messagebox, scrolledtext
+from tkinter import messagebox, scrolledtext,filedialog
 import platform
 import subprocess
 import ollama
 import time
 import os
+import json
 import psutil
 from concurrent.futures import ThreadPoolExecutor
 
@@ -159,6 +160,14 @@ class LlamaDesktopApp(ctk.CTk):
         self.chat_tab = self.notebook.add("Chat")
         self.settings_tab = self.notebook.add("Settings")
 
+        # Add Save Chat button
+        save_chat_button = ctk.CTkButton(self.sidebar, text="Save Chat", command=self.save_chat)
+        save_chat_button.grid(row=3, column=0, padx=20, pady=(10, 20))
+
+        # Add Import Chat button
+        import_chat_button = ctk.CTkButton(self.sidebar, text="Import Chat", command=self.import_chat)
+        import_chat_button.grid(row=4, column=0, padx=20, pady=(10, 20))
+
         self.create_chat_tab()
         self.create_settings_tab()
 
@@ -273,13 +282,18 @@ class LlamaDesktopApp(ctk.CTk):
             self.new_chat(name)
         else:
             self.new_chat(f"New Chat")
-    def new_chat(self, name):
+    def new_chat(self, name, messages=None, reply_times=None):
         chat = ChatObject(name)
+        if messages:
+            chat.messages = messages
+        if reply_times:
+            chat.reply_time = reply_times
         self.chats.append(chat)
         self.chat_list.insert(tk.END, chat.name)
         self.chat_list.selection_clear(0, tk.END)
         self.chat_list.selection_set(tk.END)
-        self.on_chat_select(None)
+        self.current_chat = chat
+        self.update_chat_display()
 
     def remove_chat(self):
         selection = self.chat_list.curselection()
@@ -406,6 +420,90 @@ class LlamaDesktopApp(ctk.CTk):
             self.current_chat.reply_time.clear()
             self.update_chat_display()
             print("Chat cleared.")
+
+    def save_chat(self):
+        if not self.current_chat:
+            messagebox.showerror("Error", "No chat selected. Please select a chat to save.")
+            return
+
+        # Prepare chat data
+        chat_data = {
+            "name": self.current_chat.name,
+            "messages": self.current_chat.messages,
+            "reply_times": self.current_chat.reply_time
+        }
+
+        # Open file dialog to choose save location
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            initialfile=f"{self.current_chat.name}.json"
+        )
+
+        if file_path:
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(chat_data, f, indent=2, ensure_ascii=False)
+                messagebox.showinfo("Success", f"Chat saved successfully to {file_path}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save chat: {str(e)}")
+
+    def import_chat(self):
+        file_path = filedialog.askopenfilename(
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            title="Select a chat file to import"
+        )
+        if file_path:
+            try:
+                # Attempt to load and parse the JSON file
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    chat_data = json.load(f)
+
+                # Check if chat_data is a dictionary
+                if not isinstance(chat_data, dict):
+                    raise ValueError("Invalid chat data format: expected a dictionary")
+
+                # Validate that 'name', 'messages', and 'reply_times' are present
+                if not all(key in chat_data for key in ["name", "messages", "reply_times"]):
+                    raise ValueError("Invalid chat data format: Missing required keys")
+
+                # Validate that 'messages' is a list
+                if not isinstance(chat_data["messages"], list):
+                    raise ValueError("Invalid chat data format: 'messages' should be a list")
+
+                # Validate the structure of each message in the 'messages' list
+                for index, message in enumerate(chat_data["messages"]):
+                    if not isinstance(message, dict):
+                        raise ValueError(f"Invalid message format at index {index}: Expected a dictionary")
+                    if not all(key in message for key in ["role", "content"]):
+                        raise ValueError(f"Invalid message format at index {index}: Missing 'role' or 'content' keys")
+                    if not message["role"] or not message["content"]:
+                        raise ValueError(
+                            f"Invalid message format at index {index}: 'role' or 'content' cannot be empty")
+
+            except json.JSONDecodeError:
+                messagebox.showerror("Error", "Invalid JSON file. Please ensure the file is properly formatted.")
+                return
+            except ValueError as e:
+                messagebox.showerror("Error", str(e))
+                return
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to import chat: {str(e)}")
+                return
+
+            # Only create a new chat if no exceptions occurred
+            new_chat = ChatObject(chat_data["name"])
+            new_chat.messages = chat_data["messages"]
+            new_chat.reply_time = chat_data["reply_times"]
+
+            # Add the new chat to the list and update the UI
+            self.chats.append(new_chat)
+            self.chat_list.insert(tk.END, new_chat.name)
+            self.chat_list.selection_clear(0, tk.END)
+            self.chat_list.selection_set(tk.END)
+            self.current_chat = new_chat
+            self.update_chat_display()
+            messagebox.showinfo("Success", f"Chat '{new_chat.name}' imported successfully")
 
     def generate_response(self):
         if not self.current_chat:

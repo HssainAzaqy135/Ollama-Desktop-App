@@ -16,3 +16,5 @@ choose two random numbers from 1 to 5
 what is the sum of all odd numbers from 1 to 10?
 Give me 8 random words and 3 random numbers
 generate 4 prime numbers
+What is the formula for the sum of a constanty changing sequence?
+what where all the messages I sent you?
