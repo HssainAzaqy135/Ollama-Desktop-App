@@ -5,11 +5,13 @@ import psutil
 import customtkinter as ctk
 import ollama
 import time
+
 class ChatObject:
     def __init__(self, name: str):
         self.name = name
         self.messages = []
         self.reply_time = []
+        self.addressed_models =[]
 
 
 class CenteredInputDialog(ctk.CTkInputDialog):
@@ -81,3 +83,34 @@ def get_response(curr_chat: ChatObject, model: str, selected_gpu: str):
     response = ollama.chat(model=model, messages=curr_chat.messages)
     end = time.time()
     return response, (end - start)
+
+
+def validate_data_structure(chat_data):
+    try:
+        if not isinstance(chat_data["messages"], list):
+            raise ValueError("Invalid chat data format: 'messages' should be a list")
+        if not isinstance(chat_data["reply_times"], list):
+            raise ValueError("Invalid chat data format: 'reply_times' should be a list")
+        if not isinstance(chat_data["addressed_models"], list):
+            raise ValueError("Invalid chat data format: 'addressed_models' should be a list")
+
+        # Validate the structure of each message in the 'messages' list
+        for index, message in enumerate(chat_data["messages"]):
+            if not isinstance(message, dict):
+                raise ValueError(f"Invalid message format at index {index}: Expected a dictionary")
+            if not all(key in message for key in ["role", "content"]):
+                raise ValueError(f"Invalid message format at index {index}: Missing 'role' or 'content' keys")
+            if not message["role"] or not message["content"]:
+                raise ValueError(f"Invalid message format at index {index}: 'role' or 'content' cannot be empty")
+
+        # Validate that the data aligns
+        num_of_reply_times = len(chat_data["reply_times"])
+        num_of_addresed_models = len(chat_data["addressed_models"])
+        if(len(chat_data["reply_times"]) != len(chat_data["addressed_models"])):
+            raise ValueError(f"Number of  reply_times {num_of_reply_times} doesn't match number of addressed_models {num_of_addresed_models}")
+
+    except ValueError as e:
+        return e
+
+    return None #Meaning passed check
+

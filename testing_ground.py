@@ -1,94 +1,12 @@
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox, scrolledtext,filedialog
-import platform
-import subprocess
-import ollama
-import time
-import os
 import json
-import psutil
+from utils import *
 from concurrent.futures import ThreadPoolExecutor
 
-ctk.set_appearance_mode("dark")
+ctk.set_appearance_mode("dark") # We don't  believe in light mode
 ctk.set_default_color_theme("blue")
-
-class ChatObject:
-    def __init__(self, name: str):
-        self.name = name
-        self.messages = []
-        self.reply_time = []
-
-
-class CenteredInputDialog(ctk.CTkInputDialog):
-    def __init__(self, master=None, width=300, height=200, **kwargs):
-        super().__init__(master, **kwargs)
-        self.width = width
-        self.height = height
-        self.withdraw()  # Hide the window initially
-        self.after(0, self.center_and_show)  # Schedule centering and showing
-
-    def center_and_show(self):
-        self.update_idletasks()  # Ensure size calculations are correct
-        # Force the desired size
-        self.geometry(f"{self.width}x{self.height}")
-        # Recalculate the position
-        x = (self.winfo_screenwidth() // 2) - (self.width // 2)
-        y = (self.winfo_screenheight() // 2) - (self.height // 2)
-        # Set the geometry with both size and position
-        self.geometry(f"{self.width}x{self.height}+{x}+{y}")
-        self.deiconify()  # Show the window
-
-
-def get_available_models():
-    models_dict = ollama.list()
-    model_list = [model['name'] for model in models_dict['models']]
-    return model_list
-
-def start_ollama_server():
-    process = subprocess.Popen(
-        ["ollama", "serve"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
-    time.sleep(3)  # Give some time for the server to start
-    return process
-
-def terminate_with_children(process):
-    parent = psutil.Process(process.pid)
-    for child in parent.children(recursive=True):  # Terminate child processes
-        child.terminate()
-    parent.terminate()
-    parent.wait()
-
-def check_gpu_availability():
-    try:
-        gpu_list = ["CPU"]  # Start with CPU option
-        if platform.system() == "Darwin":
-            from torch.backends import mps
-            if mps.is_available():
-                gpu_list.append("MPS")
-        else:
-            result = subprocess.run(["nvidia-smi", "--query-gpu=index,name", "--format=csv,noheader"],
-                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            if result.returncode == 0:
-                gpus = result.stdout.strip().split('\n')
-                gpu_list.extend(gpus)
-        return gpu_list
-    except FileNotFoundError:
-        print("nvidia-smi not found. Please ensure CUDA or MPS is installed and accessible.")
-        return ["CPU"]
-
-def get_response(curr_chat: ChatObject, model: str, selected_gpu: str):
-    start = time.time()
-    if selected_gpu != "CPU":
-        os.environ["CUDA_VISIBLE_DEVICES"] = selected_gpu.split(":")[0]
-        print(f"Running on GPU {selected_gpu}")
-    else:
-        print("No GPU selected, running on CPU.")
-    response = ollama.chat(model=model, messages=curr_chat.messages)
-    end = time.time()
-    return response, (end - start)
 
 class LlamaDesktopApp(ctk.CTk):
     def __init__(self):
@@ -282,12 +200,14 @@ class LlamaDesktopApp(ctk.CTk):
             self.new_chat(name)
         else:
             self.new_chat(f"New Chat")
-    def new_chat(self, name, messages=None, reply_times=None):
+    def new_chat(self, name, messages=None, reply_times=None,addressed_models = None):
         chat = ChatObject(name)
         if messages:
             chat.messages = messages
         if reply_times:
             chat.reply_time = reply_times
+        if addressed_models:
+            chat.addressed_models = addressed_models
         self.chats.append(chat)
         self.chat_list.insert(tk.END, chat.name)
         self.chat_list.selection_clear(0, tk.END)
@@ -397,7 +317,7 @@ class LlamaDesktopApp(ctk.CTk):
             for i in range(len(self.current_chat.messages)):
                 if self.current_chat.messages[i]['role'] != 'user':
                     # Insert the header in bold
-                    self.chat_display.insert(tk.END, f"{self.selected_model}:\n ", "bold")
+                    self.chat_display.insert(tk.END, f"{self.current_chat.addressed_models[i//2]}:\n ", "bold")
                     # Insert the message content normally
                     self.chat_display.insert(tk.END, f"{self.current_chat.messages[i]['content']}\n\n")
 
@@ -418,6 +338,7 @@ class LlamaDesktopApp(ctk.CTk):
         if self.current_chat:
             self.current_chat.messages.clear()
             self.current_chat.reply_time.clear()
+            self.current_chat.addressed_models.clear()
             self.update_chat_display()
             print("Chat cleared.")
 
@@ -430,7 +351,8 @@ class LlamaDesktopApp(ctk.CTk):
         chat_data = {
             "name": self.current_chat.name,
             "messages": self.current_chat.messages,
-            "reply_times": self.current_chat.reply_time
+            "reply_times": self.current_chat.reply_time,
+            "addressed_models":self.current_chat.addressed_models
         }
 
         # Open file dialog to choose save location
@@ -463,23 +385,14 @@ class LlamaDesktopApp(ctk.CTk):
                 if not isinstance(chat_data, dict):
                     raise ValueError("Invalid chat data format: expected a dictionary")
 
-                # Validate that 'name', 'messages', and 'reply_times' are present
-                if not all(key in chat_data for key in ["name", "messages", "reply_times"]):
-                    raise ValueError("Invalid chat data format: Missing required keys")
+                # Validate that 'name', 'messages',  'reply_times' and 'addressed_models' are present
+                if not all(key in chat_data for key in ["name", "messages", "reply_times","addressed_models"]):
+                    raise ValueError("Invalid chat data format: Missing some required keys")
 
-                # Validate that 'messages' is a list
-                if not isinstance(chat_data["messages"], list):
-                    raise ValueError("Invalid chat data format: 'messages' should be a list")
-
-                # Validate the structure of each message in the 'messages' list
-                for index, message in enumerate(chat_data["messages"]):
-                    if not isinstance(message, dict):
-                        raise ValueError(f"Invalid message format at index {index}: Expected a dictionary")
-                    if not all(key in message for key in ["role", "content"]):
-                        raise ValueError(f"Invalid message format at index {index}: Missing 'role' or 'content' keys")
-                    if not message["role"] or not message["content"]:
-                        raise ValueError(
-                            f"Invalid message format at index {index}: 'role' or 'content' cannot be empty")
+                # Validate chat_data types
+                result = validate_data_structure(chat_data)
+                if result:
+                    raise result
 
             except json.JSONDecodeError:
                 messagebox.showerror("Error", "Invalid JSON file. Please ensure the file is properly formatted.")
@@ -495,6 +408,7 @@ class LlamaDesktopApp(ctk.CTk):
             new_chat = ChatObject(chat_data["name"])
             new_chat.messages = chat_data["messages"]
             new_chat.reply_time = chat_data["reply_times"]
+            new_chat.addressed_models = chat_data["addressed_models"]
 
             # Add the new chat to the list and update the UI
             self.chats.append(new_chat)
@@ -534,6 +448,8 @@ class LlamaDesktopApp(ctk.CTk):
     def update_ui_with_response(self, response, time_taken):
         self.current_chat.messages.append({"role": "assistant", "content": response['message']['content']})
         self.current_chat.reply_time.append(time_taken)
+        self.current_chat.addressed_models.append(self.selected_model)
+
 
         self.update_chat_display()
         self.chat_display.see(tk.END)
