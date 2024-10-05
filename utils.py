@@ -1,75 +1,83 @@
-# Imports
-import ollama
-import json
-import time
+import platform
 import subprocess
-
-
-# Backend classes and methods for the desktop app
-class Chat_object:
-    def __init__(self,title:str):
-        self.prompts = []
-        self.replies = []
-        self.reply_time = []
-        self.title = title
+import os
+import psutil
+import customtkinter as ctk
+import ollama
+import time
+class ChatObject:
+    def __init__(self, name: str):
+        self.name = name
         self.messages = []
+        self.reply_time = []
 
 
+class CenteredInputDialog(ctk.CTkInputDialog):
+    def __init__(self, master=None, width=300, height=200, **kwargs):
+        super().__init__(master, **kwargs)
+        self.width = width
+        self.height = height
+        self.withdraw()  # Hide the window initially
+        self.after(0, self.center_and_show)  # Schedule centering and showing
 
-# --------------------------------------
+    def center_and_show(self):
+        self.update_idletasks()  # Ensure size calculations are correct
+        # Force the desired size
+        self.geometry(f"{self.width}x{self.height}")
+        # Recalculate the position
+        x = (self.winfo_screenwidth() // 2) - (self.width // 2)
+        y = (self.winfo_screenheight() // 2) - (self.height // 2)
+        # Set the geometry with both size and position
+        self.geometry(f"{self.width}x{self.height}+{x}+{y}")
+        self.deiconify()  # Show the window
+
+
 def get_available_models():
     models_dict = ollama.list()
-    with open('models_json.json','w') as models_file:
-        models_file.write(json.dumps(models_dict))
-    # Parsing model names
-    model_list = []
-    for model in models_dict['models']:
-        model_list.append(model['name'])
-
+    model_list = [model['name'] for model in models_dict['models']]
     return model_list
 
-# --------------------------------------
-
-def print_message_tab(message_content):
-    print('Prompt:')
-    print(message_content)
-    print('*-*'*25)
-# --------------------------------------
-def print_response_tab(model_name,response,index):
-    print(f'Response index {index}')
-    print(model_name)
-    print(response)
-    print('*-*' * 25)
-# --------------------------------------
-def get_message_content():
-    print('You:')
-    content = input()
-    return content
-# --------------------------------------
-def choose_model(models_list):
-    print('Choose a model by index:')
-    for i in range(len(models_list)):
-        print(f'{i+1} : {models_list[i]}')
-    index = int(input())
-    return models_list[index-1]
-# --------------------------------------
-def get_response(curr_Chat:Chat_object,model:str):
-    start = time.time()
-    response = ollama.chat(model=model, messages=curr_Chat.messages)
-    end = time.time()
-    return response,(end-start)
-# --------------------------------------
-def get_chat_title():
-    return input('Choose a chat title: ').strip()
-# --------------------------------------
-# Start Ollama server automatically and hide output
 def start_ollama_server():
-    # Run the ollama serve command in a background process and suppress output
     process = subprocess.Popen(
-        ["ollama", "serve"], 
-        stdout=subprocess.DEVNULL,  # Hide standard output
-        stderr=subprocess.DEVNULL   # Hide standard error
+        ["ollama", "serve"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
     )
     time.sleep(3)  # Give some time for the server to start
     return process
-# --------------------------------------
+
+def terminate_with_children(process):
+    parent = psutil.Process(process.pid)
+    for child in parent.children(recursive=True):  # Terminate child processes
+        child.terminate()
+    parent.terminate()
+    parent.wait()
+
+def check_gpu_availability():
+    try:
+        gpu_list = ["CPU"]  # Start with CPU option
+        if platform.system() == "Darwin":
+            from torch.backends import mps
+            if mps.is_available():
+                gpu_list.append("MPS")
+        else:
+            result = subprocess.run(["nvidia-smi", "--query-gpu=index,name", "--format=csv,noheader"],
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if result.returncode == 0:
+                gpus = result.stdout.strip().split('\n')
+                gpu_list.extend(gpus)
+        return gpu_list
+    except FileNotFoundError:
+        print("nvidia-smi not found. Please ensure CUDA or MPS is installed and accessible.")
+        return ["CPU"]
+
+def get_response(curr_chat: ChatObject, model: str, selected_gpu: str):
+    start = time.time()
+    if selected_gpu != "CPU":
+        os.environ["CUDA_VISIBLE_DEVICES"] = selected_gpu.split(":")[0]
+        print(f"Running on GPU {selected_gpu}")
+    else:
+        print("No GPU selected, running on CPU.")
+    response = ollama.chat(model=model, messages=curr_chat.messages)
+    end = time.time()
+    return response, (end - start)
