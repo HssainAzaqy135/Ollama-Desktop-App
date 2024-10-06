@@ -1,3 +1,5 @@
+import random
+
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox, scrolledtext,filedialog
@@ -85,6 +87,10 @@ class LlamaDesktopApp(ctk.CTk):
         # Add Import Chat button
         import_chat_button = ctk.CTkButton(self.sidebar, text="Import Chat", command=self.import_chat)
         import_chat_button.grid(row=4, column=0, padx=20, pady=(10, 20))
+
+        # Add Set Instructions button
+        set_instructions_button = ctk.CTkButton(self.sidebar, text="Set Instructions", command=self.set_instructions)
+        set_instructions_button.grid(row=5, column=0, padx=20, pady=(10, 20))
 
         self.create_chat_tab()
         self.create_settings_tab()
@@ -186,10 +192,11 @@ class LlamaDesktopApp(ctk.CTk):
             self.slider_value_vars[name].set(f"{int(value)}")
 
     def prompt_new_chat(self):
-        dialog = CenteredInputDialog(text="Enter a name for the new chat:",
+        dialog = CenteredTextInputDialog(text="Enter a name for the new chat:",
                                      title="New Chat",
-                                     height=200,
-                                     width=400)
+                                     height=250,
+                                     width=350,
+                                     max_length=50)
         name = dialog.get_input()
         if name is None:
             # Dialog was cancelled
@@ -201,13 +208,16 @@ class LlamaDesktopApp(ctk.CTk):
         else:
             self.new_chat(f"New Chat")
     def new_chat(self, name, messages=None, reply_times=None,addressed_models = None):
-        chat = ChatObject(name)
-        if messages:
-            chat.messages = messages
-        if reply_times:
-            chat.reply_time = reply_times
-        if addressed_models:
-            chat.addressed_models = addressed_models
+        chat = ChatObject(name = name,
+                          messages=messages,
+                          reply_times=reply_times,
+                          addressed_models= addressed_models)
+        # if messages:
+        #     chat.messages = messages
+        # if reply_times:
+        #     chat.reply_times = reply_times
+        # if addressed_models:
+        #     chat.addressed_models = addressed_models
         self.chats.append(chat)
         self.chat_list.insert(tk.END, chat.name)
         self.chat_list.selection_clear(0, tk.END)
@@ -303,16 +313,38 @@ class LlamaDesktopApp(ctk.CTk):
             self.current_chat = self.chats[index]
             self.update_chat_display()
 
+    def set_instructions(self):
+        if not self.current_chat:
+            messagebox.showerror("Error", "No chat selected. Please select or create a chat first.")
+            return
+
+        # Pass the current instructions as the initial text
+        initial_text = self.current_chat.instructions
+        dialog = CenteredTextInputDialog(self, text="Enter instructions for the current chat:",
+                                         title="Set Instructions",
+                                         height=300,
+                                         width=500,
+                                         max_length=1000,
+                                         initial_text=initial_text)  # Pass the initial text
+        # Wait for the dialog to be created
+        self.wait_window(dialog)
+        # Check if the dialog was cancelled
+        if dialog.result is None:
+            return
+        # If the dialog wasn't cancelled, update the instructions
+        if dialog.result:
+            self.current_chat.instructions = dialog.result
+            messagebox.showinfo("Success", "Instructions have been updated.")
+
     def update_chat_display(self):
         # Clear and prepare the chat display
         self.chat_display.config(state=tk.NORMAL)
         self.chat_display.delete(1.0, tk.END)
-
         # Define the bold tag if it doesn't already exist
         self.chat_display.tag_configure("bold", font=("Arial", self.font_size + 2, "bold"))
 
         if self.current_chat:
-            self.chat_display.insert(tk.END, f"Current Chat: {self.current_chat.name}\n\n", "bold")
+            self.chat_display.insert(tk.END, f"Current Chat: {self.current_chat.name} \n\n", "bold")
             # Loop through messages and display them
             for i in range(len(self.current_chat.messages)):
                 if self.current_chat.messages[i]['role'] != 'user':
@@ -321,9 +353,9 @@ class LlamaDesktopApp(ctk.CTk):
                     # Insert the message content normally
                     self.chat_display.insert(tk.END, f"{self.current_chat.messages[i]['content']}\n\n")
 
-                    if i // 2 < len(self.current_chat.reply_time):
+                    if i // 2 < len(self.current_chat.reply_times):
                         self.chat_display.insert(tk.END,
-                                                 f"Response time: {self.current_chat.reply_time[i // 2]:.2f} seconds\n\n")
+                                                 f"Response time: {self.current_chat.reply_times[i // 2]:.2f} seconds\n\n")
                 else:
                     self.chat_display.insert(tk.END, "User:\n ", "bold")
                     # Insert the message content normally
@@ -337,10 +369,10 @@ class LlamaDesktopApp(ctk.CTk):
     def clear_chat(self):
         if self.current_chat:
             self.current_chat.messages.clear()
-            self.current_chat.reply_time.clear()
+            self.current_chat.reply_times.clear()
             self.current_chat.addressed_models.clear()
             self.update_chat_display()
-            print("Chat cleared.")
+            print("Chat cleared.(Didn't clear instructions)")
 
     def save_chat(self):
         if not self.current_chat:
@@ -351,8 +383,9 @@ class LlamaDesktopApp(ctk.CTk):
         chat_data = {
             "name": self.current_chat.name,
             "messages": self.current_chat.messages,
-            "reply_times": self.current_chat.reply_time,
-            "addressed_models":self.current_chat.addressed_models
+            "reply_times": self.current_chat.reply_times,
+            "addressed_models": self.current_chat.addressed_models,
+            "instructions": self.current_chat.instructions  # Add instructions to saved data
         }
 
         # Open file dialog to choose save location
@@ -385,8 +418,8 @@ class LlamaDesktopApp(ctk.CTk):
                 if not isinstance(chat_data, dict):
                     raise ValueError("Invalid chat data format: expected a dictionary")
 
-                # Validate that 'name', 'messages',  'reply_times' and 'addressed_models' are present
-                if not all(key in chat_data for key in ["name", "messages", "reply_times","addressed_models"]):
+                # Validate that 'name', 'messages', 'reply_times', 'addressed_models', and 'instructions' are present
+                if not all(key in chat_data for key in ["name", "messages", "reply_times", "addressed_models", "instructions"]):
                     raise ValueError("Invalid chat data format: Missing some required keys")
 
                 # Validate chat_data types
@@ -407,8 +440,9 @@ class LlamaDesktopApp(ctk.CTk):
             # Only create a new chat if no exceptions occurred
             new_chat = ChatObject(chat_data["name"])
             new_chat.messages = chat_data["messages"]
-            new_chat.reply_time = chat_data["reply_times"]
+            new_chat.reply_times = chat_data["reply_times"]
             new_chat.addressed_models = chat_data["addressed_models"]
+            new_chat.instructions = chat_data["instructions"]
 
             # Add the new chat to the list and update the UI
             self.chats.append(new_chat)
@@ -447,7 +481,7 @@ class LlamaDesktopApp(ctk.CTk):
 
     def update_ui_with_response(self, response, time_taken):
         self.current_chat.messages.append({"role": "assistant", "content": response['message']['content']})
-        self.current_chat.reply_time.append(time_taken)
+        self.current_chat.reply_times.append(time_taken)
         self.current_chat.addressed_models.append(self.selected_model)
 
 

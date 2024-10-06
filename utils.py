@@ -7,31 +7,86 @@ import ollama
 import time
 
 class ChatObject:
-    def __init__(self, name: str):
+
+    # Don't ask why, please don't touch
+    def __init__(self, name: str,
+                 messages:list = None,
+                 reply_times:list = None,
+                 addressed_models = None,
+                 instructions = None):
         self.name = name
-        self.messages = []
-        self.reply_time = []
-        self.addressed_models =[]
-
-
-class CenteredInputDialog(ctk.CTkInputDialog):
-    def __init__(self, master=None, width=300, height=200, **kwargs):
-        super().__init__(master, **kwargs)
+        self.messages = messages if messages is not None else []
+        self.reply_times = reply_times if reply_times is not None else []
+        self.addressed_models = addressed_models if addressed_models is not None else []
+        self.instructions = instructions if instructions is not None else []
+class CenteredTextInputDialog(ctk.CTkToplevel):
+    def __init__(self, master=None, width=300, height=200, max_length=None, initial_text="", **kwargs):
+        super().__init__(master)
         self.width = width
         self.height = height
+        self.max_length = max_length  # Max length for input text
+        self.title(kwargs.get("title", "Input"))
+        self.result = None
+
+        self.frame = ctk.CTkFrame(self)
+        self.frame.pack(padx=20, pady=20, fill="both", expand=True)
+
+        self.label = ctk.CTkLabel(self.frame, text=kwargs.get("text", "Enter text:"))
+        self.label.pack(pady=(0, 10))
+
+        self.text_widget = ctk.CTkTextbox(self.frame, width=width-40, height=height-120)  # Adjusted height
+        self.text_widget.pack(pady=(0, 10), fill="both", expand=True)
+
+        # Insert initial text into the text widget
+        self.text_widget.insert("1.0", initial_text)  # Insert at line 1, character 0
+
+        if self.max_length is not None:
+            self.text_widget.bind("<KeyPress>", self.prevent_excess_input)
+
+        button_frame = ctk.CTkFrame(self.frame)
+        button_frame.pack(fill="x", pady=(10, 0))  # Added vertical padding
+
+        button_style = {
+            "width": 120,  # Increased width
+            "height": 40,  # Increased height
+            "corner_radius": 8,  # Rounded corners
+            "border_width": 2,  # Added border
+            "font": ("Arial", 14, "bold")  # Larger, bold font
+        }
+
+        self.ok_button = ctk.CTkButton(button_frame, text="OK", command=self.on_ok, **button_style)
+        self.ok_button.pack(side="left", padx=(0, 10))
+
+        self.cancel_button = ctk.CTkButton(button_frame, text="Cancel", command=self.on_cancel, **button_style)
+        self.cancel_button.pack(side="right")
+
         self.withdraw()  # Hide the window initially
         self.after(0, self.center_and_show)  # Schedule centering and showing
 
+    def prevent_excess_input(self, event=None):
+        """Prevent further input when the text reaches max_length."""
+        current_text = self.text_widget.get("1.0", "end-1c")  # Get current text without trailing newline
+        if len(current_text) >= self.max_length and event.keysym not in ("BackSpace", "Delete"):
+            return "break"  # Block any further input except for backspace and delete
+
     def center_and_show(self):
         self.update_idletasks()  # Ensure size calculations are correct
-        # Force the desired size
-        self.geometry(f"{self.width}x{self.height}")
-        # Recalculate the position
         x = (self.winfo_screenwidth() // 2) - (self.width // 2)
         y = (self.winfo_screenheight() // 2) - (self.height // 2)
-        # Set the geometry with both size and position
         self.geometry(f"{self.width}x{self.height}+{x}+{y}")
         self.deiconify()  # Show the window
+
+    def on_ok(self):
+        self.result = self.text_widget.get("1.0", ctk.END).strip()
+        self.destroy()  # Close the window
+
+    def on_cancel(self):
+        self.result = None
+        self.destroy()  # Close the window
+
+    def get_input(self):
+        self.master.wait_window(self)
+        return self.result
 
 
 def get_available_models():
@@ -80,7 +135,12 @@ def get_response(curr_chat: ChatObject, model: str, selected_gpu: str):
         print(f"Running on GPU {selected_gpu}")
     else:
         print("No GPU selected, running on CPU.")
-    response = ollama.chat(model=model, messages=curr_chat.messages)
+
+    # If instructions exist, prepend them to the messages
+    messages = curr_chat.messages.copy()
+    if curr_chat.instructions:
+        messages.insert(0, {"role": "system", "content": curr_chat.instructions})
+    response = ollama.chat(model=model, messages=messages)
     end = time.time()
     return response, (end - start)
 
