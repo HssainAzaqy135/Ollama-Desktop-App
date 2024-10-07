@@ -1,10 +1,10 @@
-import random
-
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox, scrolledtext,filedialog
 import json
 from utils import *
+import ollama
+from ChatFileSystem import ChatMemory  # Add this import
 from concurrent.futures import ThreadPoolExecutor
 
 ctk.set_appearance_mode("dark") # We don't  believe in light mode
@@ -20,6 +20,14 @@ class LlamaDesktopApp(ctk.CTk):
         window_height = 700
         self.font_size = 12 #Default font size
         self.slider_value_vars = {}
+        self.executor = ThreadPoolExecutor(max_workers=2)
+        self.chats = []
+        self.current_chat = None
+        self.available_models = get_available_models()
+        self.selected_model = None
+        self.gpus = check_gpu_availability()
+        self.selected_gpu = None
+        self.chat_memory = ChatMemory()  # Initialize ChatMemory
 
         # Get screen width and height
         screen_width = self.winfo_screenwidth()
@@ -32,23 +40,14 @@ class LlamaDesktopApp(ctk.CTk):
         # Set the geometry of the window with position and size
         self.geometry(f"{window_width}x{window_height}+{position_x}+{position_y}")
 
-        self.executor = ThreadPoolExecutor(max_workers=2)
-        self.chats = []
-        self.current_chat = None
-        self.available_models = get_available_models()
-        self.selected_model = None
-        self.gpus = check_gpu_availability()
-        self.selected_gpu = None
-
         self.text_color = {"red": 0.2, "green": 0.8, "blue": 0.2}
         self.create_widgets()
-        self.new_chat("New Chat")
+        self.load_chats_from_memory()  # Load existing chats from memory
 
         self.red_slider.set(self.text_color['red'])
         self.green_slider.set(self.text_color['green'])
         self.blue_slider.set(self.text_color['blue'])
         self.apply_color_changes()
-
         self.font_size_slider.set(self.font_size)
         self.apply_font_size_changes()
 
@@ -191,6 +190,12 @@ class LlamaDesktopApp(ctk.CTk):
         else:
             self.slider_value_vars[name].set(f"{int(value)}")
 
+    def load_chats_from_memory(self):
+        chat_names = self.chat_memory.list_chat_names()
+        for name in chat_names:
+            chat = self.chat_memory.get_chat_by_name(name)
+            self.chats.append(chat)
+            self.chat_list.insert(tk.END, chat.name)
     def prompt_new_chat(self):
         dialog = CenteredTextInputDialog(text="Enter a name for the new chat:",
                                      title="New Chat",
@@ -212,18 +217,13 @@ class LlamaDesktopApp(ctk.CTk):
                           messages=messages,
                           reply_times=reply_times,
                           addressed_models= addressed_models)
-        # if messages:
-        #     chat.messages = messages
-        # if reply_times:
-        #     chat.reply_times = reply_times
-        # if addressed_models:
-        #     chat.addressed_models = addressed_models
         self.chats.append(chat)
         self.chat_list.insert(tk.END, chat.name)
         self.chat_list.selection_clear(0, tk.END)
         self.chat_list.selection_set(tk.END)
         self.current_chat = chat
         self.update_chat_display()
+        self.chat_memory.add_chat(chat)  # Adding the new chat to memory
 
     def remove_chat(self):
         selection = self.chat_list.curselection()
@@ -231,6 +231,7 @@ class LlamaDesktopApp(ctk.CTk):
             index = selection[0]
             removed_chat = self.chats.pop(index)
             self.chat_list.delete(index)
+            self.chat_memory.delete_chat_by_name(removed_chat.name)  # Remove chat from memory
 
             # Update listbox items
             self.chat_list.delete(0, tk.END)
@@ -451,11 +452,12 @@ class LlamaDesktopApp(ctk.CTk):
             self.chat_list.selection_set(tk.END)
             self.current_chat = new_chat
             self.update_chat_display()
+            self.chat_memory.add_chat(new_chat)
             messagebox.showinfo("Success", f"Chat '{new_chat.name}' imported successfully")
 
     def generate_response(self):
         if not self.current_chat:
-            messagebox.showerror("Error", "No chat available. Please create a new chat first.")
+            messagebox.showerror("Error", "No chat selected.")
             return
 
         self.selected_model = self.model_var.get()
@@ -483,7 +485,7 @@ class LlamaDesktopApp(ctk.CTk):
         self.current_chat.messages.append({"role": "assistant", "content": response['message']['content']})
         self.current_chat.reply_times.append(time_taken)
         self.current_chat.addressed_models.append(self.selected_model)
-
+        self.chat_memory.update_chat(self.current_chat)  # Update chat in memory
 
         self.update_chat_display()
         self.chat_display.see(tk.END)
@@ -491,14 +493,6 @@ class LlamaDesktopApp(ctk.CTk):
     def stop_ollama_server(self):
         if self.ollama_server:
             print("Stopping Ollama server...")
-
-            # Send a request to stop the server
-            try:
-                ollama.cancel()  # This sends a cancellation request to all running models
-                time.sleep(2)  # Give some time for the server to process the cancellation
-            except Exception as e:
-                print(f"Error stopping Ollama server: {e}")
-
             # Terminate the process
             try:
                 terminate_with_children(self.ollama_server)

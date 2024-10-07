@@ -7,18 +7,16 @@ import ollama
 import time
 
 class ChatObject:
-
-    # Don't ask why, please don't touch
     def __init__(self, name: str,
-                 messages:list = None,
-                 reply_times:list = None,
-                 addressed_models = None,
-                 instructions = None):
+                 messages: list = None,
+                 reply_times: list = None,
+                 addressed_models: list = None,
+                 instructions: str = None):
         self.name = name
         self.messages = messages if messages is not None else []
         self.reply_times = reply_times if reply_times is not None else []
         self.addressed_models = addressed_models if addressed_models is not None else []
-        self.instructions = instructions if instructions is not None else []
+        self.instructions = instructions if instructions is not None else ""
 class CenteredTextInputDialog(ctk.CTkToplevel):
     def __init__(self, master=None, width=300, height=200, max_length=None, initial_text="", **kwargs):
         super().__init__(master)
