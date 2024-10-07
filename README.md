@@ -18,7 +18,7 @@ By:
 1. Allow prompting and getting response from LLama3 models with chat UI $
 2. Model Selection $
 3. Chat history and context switching $
-4. Chat memory
+4. Chat memory $
 5. Gpu acceleration and gpu selection $
 - 5.1. Windows $
 - 5.2. Mac $
