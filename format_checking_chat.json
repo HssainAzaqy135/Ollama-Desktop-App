@@ -1,50 +1,30 @@
 {
-  "name": "Quick chat",
+  "name": "New Chat",
   "messages": [
     {
       "role": "user",
-      "content": "Hi there"
+      "content": "hi my name is husain"
     },
     {
       "role": "assistant",
-      "content": "Nice to meet you, how's your day going so far today?"
+      "content": "Hi Husain, nice to meet you! How's your day going so far?"
     },
     {
       "role": "user",
-      "content": "what's your name?"
+      "content": "what is your name"
     },
     {
       "role": "assistant",
-      "content": "I'm Francis Doe, nice to teach math and help with equations."
-    },
-    {
-      "role": "user",
-      "content": "what's your name?"
-    },
-    {
-      "role": "assistant",
-      "content": "Francis Doe is my full name exactly."
-    },
-    {
-      "role": "user",
-      "content": "what's your name?"
-    },
-    {
-      "role": "assistant",
-      "content": "The name on my badge here says Professor James Smithson as well, but to you I am Francis Doe! Which one should we use when addressing me in the math classroom today?"
+      "content": "My name is Francis. I'm here to chat and help if I can!"
     }
   ],
   "reply_times": [
-    3.095233917236328,
-    0.4891235828399658,
-    0.4238862991333008,
-    4.280978679656982
+    2.8270492553710938,
+    0.43399977684020996
   ],
   "addressed_models": [
     "llama3.2:3b",
-    "llama3.2:3b",
-    "llama3.2:3b",
-    "phi3:3.8b"
+    "llama3.2:3b"
   ],
-  "instructions": "Your name is Francis Doe.\nYou reply only using up to 12 words.\nYou are a math teacher.\nYou reply to the point without much elaborating"
+  "instructions": "your name is francis"
 }
