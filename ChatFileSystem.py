@@ -1,6 +1,7 @@
 import sqlite3
 import json
-from utils import ChatObject
+from datetime import datetime
+from utils import ChatObject  # Assuming ChatObject has already been updated as discussed.
 
 class ChatMemory:
     def __init__(self, db_path='chats.db'):
@@ -12,13 +13,12 @@ class ChatMemory:
         cursor = conn.cursor()
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS chats (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
+                timestamp DATETIME PRIMARY KEY,  -- Use timestamp as the primary key
+                name TEXT NOT NULL,
                 messages TEXT,
                 reply_times TEXT,
                 addressed_models TEXT,
-                instructions TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                instructions TEXT
             )
         ''')
         conn.commit()
@@ -29,9 +29,10 @@ class ChatMemory:
         cursor = conn.cursor()
 
         cursor.execute('''
-            INSERT INTO chats (name, messages, reply_times, addressed_models, instructions)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO chats (timestamp, name, messages, reply_times, addressed_models, instructions)
+            VALUES (?, ?, ?, ?, ?, ?)
         ''', (
+            chat_object.creation_time,  # Use the timestamp as the unique identifier
             chat_object.name,
             json.dumps(chat_object.messages),
             json.dumps(chat_object.reply_times),
@@ -42,11 +43,11 @@ class ChatMemory:
         conn.commit()
         conn.close()
 
-    def get_chat_by_name(self, name: str) -> ChatObject:
+    def get_chat_by_timestamp(self, timestamp: str) -> ChatObject:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute('SELECT * FROM chats WHERE name = ?', (name,))
+        cursor.execute('SELECT * FROM chats WHERE timestamp = ?', (timestamp,))
         chat_data = cursor.fetchone()
         conn.close()
 
@@ -61,23 +62,23 @@ class ChatMemory:
         cursor.execute('''
             UPDATE chats
             SET messages = ?, reply_times = ?, addressed_models = ?, instructions = ?
-            WHERE name = ?
+            WHERE timestamp = ?
         ''', (
             json.dumps(chat_object.messages),
             json.dumps(chat_object.reply_times),
             json.dumps(chat_object.addressed_models),
             chat_object.instructions,
-            chat_object.name
+            chat_object.creation_time  # Use the timestamp to identify which chat to update
         ))
 
         conn.commit()
         conn.close()
 
-    def delete_chat_by_name(self, name: str):
+    def delete_chat_by_timestamp(self, timestamp: str):
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        cursor.execute('DELETE FROM chats WHERE name = ?', (name,))
+        cursor.execute('DELETE FROM chats WHERE timestamp = ?', (timestamp,))
         conn.commit()
         conn.close()
 
@@ -86,10 +87,32 @@ class ChatMemory:
         cursor = conn.cursor()
 
         cursor.execute('SELECT name FROM chats')
-        chat_names = [row[0] for row in cursor.fetchall()]
+        chat_names = [row[0] for row in cursor.fetchall()] # Acceses names from names column, row[0] for getting the value
         conn.close()
 
         return chat_names
+
+    def get_chat_name(self, chat_id: str) -> str:
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT name FROM chats WHERE timestamp = ?', (chat_id,))
+        chat_data = cursor.fetchone()  # Fetch one result
+        conn.close()
+
+        if chat_data:
+            return chat_data[0]  # Return the chat name
+        return None  # Return None if no chat found
+
+    def list_chat_ids(self):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT timestamp FROM chats')
+        chat_ids = [row[0] for row in cursor.fetchall()]
+        conn.close()
+
+        return chat_ids
 
     def _row_to_chat_object(self, row):
         return ChatObject(
@@ -97,7 +120,8 @@ class ChatMemory:
             messages=json.loads(row[2]),
             reply_times=json.loads(row[3]),
             addressed_models=json.loads(row[4]),
-            instructions=row[5]
+            instructions=row[5],
+            creation_time=row[0]  # Use timestamp as creation time
         )
 
     def clear_all_chats(self):
