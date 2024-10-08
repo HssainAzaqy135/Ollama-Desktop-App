@@ -5,18 +5,25 @@ import psutil
 import customtkinter as ctk
 import ollama
 import time
+from datetime import datetime
 
 class ChatObject:
     def __init__(self, name: str,
                  messages: list = None,
                  reply_times: list = None,
                  addressed_models: list = None,
-                 instructions: str = None):
+                 instructions: str = None,
+                 creation_time: str = None):  # Parameter for creation time
         self.name = name
         self.messages = messages if messages is not None else []
         self.reply_times = reply_times if reply_times is not None else []
         self.addressed_models = addressed_models if addressed_models is not None else []
         self.instructions = instructions if instructions is not None else ""
+        # Store creation time as a datetime object
+        if creation_time is None:
+            self.creation_time = datetime.now().isoformat()  # Store as ISO string
+        else:
+            self.creation_time = creation_time  # Use the provided ISO string
 class CenteredTextInputDialog(ctk.CTkToplevel):
     def __init__(self, master=None, width=300, height=200, max_length=None, initial_text="", **kwargs):
         super().__init__(master)
