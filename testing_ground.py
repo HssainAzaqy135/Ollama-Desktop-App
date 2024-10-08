@@ -18,7 +18,7 @@ class LlamaDesktopApp(ctk.CTk):
         # Set the window size
         self.window_width = 900
         self.window_height = 700
-        self.font_size = 12 #Default font size
+        self.font_size = 14 #Default font size
         self.slider_value_vars = {}
         self.executor = ThreadPoolExecutor(max_workers=2)
         self.chat_memory = ChatMemory()  # Initialize ChatMemory
@@ -230,25 +230,22 @@ class LlamaDesktopApp(ctk.CTk):
         selection = self.chat_list.curselection()
         if selection:
             index = selection[0]
-            removed_chat = self.chat_keys.pop(index)
+            removed_chat_id = self.chat_keys.pop(index)
+            removed_chat_name = self.chat_memory.get_chat_name(chat_id = removed_chat_id)
             self.chat_list.delete(index)
-            self.chat_memory.delete_chat_by_timestamp(removed_chat.creation_time)  # Remove chat from memory by timestamp
 
-            # Update listbox items
-            self.chat_list.delete(0, tk.END)
-            for chat in self.chat_keys:
-                self.chat_list.insert(tk.END, chat.name)
+            self.chat_memory.delete_chat_by_timestamp(removed_chat_id)  # Remove chat from memory by timestamp
 
             # Select the next chat, or the last one if we removed the last chat
             if self.chat_keys:
                 new_index = min(index, len(self.chat_keys) - 1)
                 self.chat_list.selection_set(new_index)
-                self.current_chat = self.chat_keys[new_index]
+                self.current_chat = self.chat_memory.get_chat_by_timestamp(self.chat_keys[new_index])
             else:
                 self.current_chat = None
 
             self.update_chat_display()
-            print(f"Removed chat: {removed_chat.name}")
+            print(f"Removed chat: {removed_chat_name} , with timestamp id: {removed_chat_id}")
         else:
             messagebox.showinfo("Info", "Please select a chat to remove.")
 

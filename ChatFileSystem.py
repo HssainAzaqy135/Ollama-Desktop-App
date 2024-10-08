@@ -92,6 +92,18 @@ class ChatMemory:
 
         return chat_names
 
+    def get_chat_name(self, chat_id: str) -> str:
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT name FROM chats WHERE timestamp = ?', (chat_id,))
+        chat_data = cursor.fetchone()  # Fetch one result
+        conn.close()
+
+        if chat_data:
+            return chat_data[0]  # Return the chat name
+        return None  # Return None if no chat found
+
     def list_chat_ids(self):
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()

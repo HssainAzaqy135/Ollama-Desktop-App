@@ -16,33 +16,36 @@ class LlamaDesktopApp(ctk.CTk):
         self.ollama_server = start_ollama_server()
         self.title("Llama Desktop App")
         # Set the window size
-        window_width = 900
-        window_height = 700
-        self.font_size = 12 #Default font size
+        self.window_width = 900
+        self.window_height = 700
+        self.font_size = 14 #Default font size
         self.slider_value_vars = {}
         self.executor = ThreadPoolExecutor(max_workers=2)
-        self.chats = []
+        self.chat_memory = ChatMemory()  # Initialize ChatMemory
+        self.chat_keys = self.chat_memory.list_chat_ids()
         self.current_chat = None
         self.available_models = get_available_models()
         self.selected_model = None
         self.gpus = check_gpu_availability()
         self.selected_gpu = None
-        self.chat_memory = ChatMemory()  # Initialize ChatMemory
+        self.create_widgets()
+        self.load_chats_from_memory()  # Load existing chats from memory
+        self.config_window_geometry()
 
+    def config_window_geometry(self):
         # Get screen width and height
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
 
         # Calculate the position to center the window
-        position_x = int((screen_width / 2) - (window_width / 2))
-        position_y = int((screen_height / 2) - (window_height / 2))
+        position_x = int((screen_width / 2) - (self.window_width / 2))
+        position_y = int((screen_height / 2) - (self.window_height / 2))
 
         # Set the geometry of the window with position and size
-        self.geometry(f"{window_width}x{window_height}+{position_x}+{position_y}")
+        self.geometry(f"{self.window_width}x{self.window_height}+{position_x}+{position_y}")
 
         self.text_color = {"red": 0.2, "green": 0.8, "blue": 0.2}
-        self.create_widgets()
-        self.load_chats_from_memory()  # Load existing chats from memory
+
 
         self.red_slider.set(self.text_color['red'])
         self.green_slider.set(self.text_color['green'])
@@ -193,9 +196,7 @@ class LlamaDesktopApp(ctk.CTk):
     def load_chats_from_memory(self):
         chat_names = self.chat_memory.list_chat_names()
         for name in chat_names:
-            chat = self.chat_memory.get_chat_by_name(name)
-            self.chats.append(chat)
-            self.chat_list.insert(tk.END, chat.name)
+            self.chat_list.insert(tk.END,name)
     def prompt_new_chat(self):
         dialog = CenteredTextInputDialog(text="Enter a name for the new chat:",
                                      title="New Chat",
@@ -217,7 +218,7 @@ class LlamaDesktopApp(ctk.CTk):
                           messages=messages,
                           reply_times=reply_times,
                           addressed_models= addressed_models)
-        self.chats.append(chat)
+        self.chat_keys.append(chat.creation_time)
         self.chat_list.insert(tk.END, chat.name)
         self.chat_list.selection_clear(0, tk.END)
         self.chat_list.selection_set(tk.END)
@@ -229,25 +230,22 @@ class LlamaDesktopApp(ctk.CTk):
         selection = self.chat_list.curselection()
         if selection:
             index = selection[0]
-            removed_chat = self.chats.pop(index)
+            removed_chat_id = self.chat_keys.pop(index)
+            removed_chat_name = self.chat_memory.get_chat_name(chat_id = removed_chat_id)
             self.chat_list.delete(index)
-            self.chat_memory.delete_chat_by_name(removed_chat.name)  # Remove chat from memory
 
-            # Update listbox items
-            self.chat_list.delete(0, tk.END)
-            for chat in self.chats:
-                self.chat_list.insert(tk.END, chat.name)
+            self.chat_memory.delete_chat_by_timestamp(removed_chat_id)  # Remove chat from memory by timestamp
 
             # Select the next chat, or the last one if we removed the last chat
-            if self.chats:
-                new_index = min(index, len(self.chats) - 1)
+            if self.chat_keys:
+                new_index = min(index, len(self.chat_keys) - 1)
                 self.chat_list.selection_set(new_index)
-                self.current_chat = self.chats[new_index]
+                self.current_chat = self.chat_memory.get_chat_by_timestamp(self.chat_keys[new_index])
             else:
                 self.current_chat = None
 
             self.update_chat_display()
-            print(f"Removed chat: {removed_chat.name}")
+            print(f"Removed chat: {removed_chat_name} , with timestamp id: {removed_chat_id}")
         else:
             messagebox.showinfo("Info", "Please select a chat to remove.")
 
@@ -311,7 +309,7 @@ class LlamaDesktopApp(ctk.CTk):
         selection = self.chat_list.curselection()
         if selection:
             index = selection[0]
-            self.current_chat = self.chats[index]
+            self.current_chat = self.chat_memory.get_chat_by_timestamp(self.chat_keys[index])
             self.update_chat_display()
 
     def set_instructions(self):
@@ -372,6 +370,9 @@ class LlamaDesktopApp(ctk.CTk):
             self.current_chat.messages.clear()
             self.current_chat.reply_times.clear()
             self.current_chat.addressed_models.clear()
+            # Updating memory
+            self.chat_memory.update_chat(self.current_chat)
+            # Updating display
             self.update_chat_display()
             print("Chat cleared.(Didn't clear instructions)")
 
@@ -446,7 +447,7 @@ class LlamaDesktopApp(ctk.CTk):
             new_chat.instructions = chat_data["instructions"]
 
             # Add the new chat to the list and update the UI
-            self.chats.append(new_chat)
+            self.chat_keys.append(new_chat)
             self.chat_list.insert(tk.END, new_chat.name)
             self.chat_list.selection_clear(0, tk.END)
             self.chat_list.selection_set(tk.END)
